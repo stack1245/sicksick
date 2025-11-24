@@ -61,78 +61,99 @@ def calculate_similarity(original: str, recognized: str) -> float:
 async def analyze_singing_full(original_audio_path: str, user_audio_path: str) -> dict:
     recognizer = sr.Recognizer()
     recognized_text = ""
+    
+    # 기본 점수 (노래를 불렀다는 것만으로도 기본 점수 제공)
+    pitch_stability_score = 50.0
+    pitch_match_score = 50.0
+    energy_match_score = 50.0
+    pronunciation_score = 50.0
+    length_score = 50.0
+    
     try:
-        with sr.AudioFile(user_audio_path) as source:
-            audio = recognizer.record(source)
-            
-            try:
-                recognized_text = recognizer.recognize_google(audio, language='ko-KR')
-            except sr.UnknownValueError:
-                recognized_text = ""
-            except sr.RequestError:
-                return {
-                    'success': False,
-                    'error': '음성 인식 서비스에 연결할 수 없습니다'
-                }
-        # Pitch / Energy 분석
-        pitch_stability_score = 0.0
-        pitch_match_score = 0.0
-        energy_match_score = 0.0
-        pronunciation_score = 0.0
-        length_score = 0.0
+        # 음성 인식 (실패해도 계속 진행)
+        try:
+            with sr.AudioFile(user_audio_path) as source:
+                audio = recognizer.record(source)
+                try:
+                    recognized_text = recognizer.recognize_google(audio, language='ko-KR')
+                    # 음성 인식 성공 시 보너스
+                    if recognized_text:
+                        word_count = len(recognized_text.split())
+                        pronunciation_score = min(100.0, 50 + word_count * 5)
+                        length_score = min(100.0, 50 + word_count * 3)
+                except sr.UnknownValueError:
+                    pass  # 인식 실패해도 기본 점수 유지
+                except sr.RequestError:
+                    pass  # API 오류도 기본 점수 유지
+        except Exception:
+            pass  # 파일 읽기 실패해도 계속 진행
 
+        # librosa 분석 (사용 가능하고 성공하면 보너스)
         if librosa is not None:
             try:
                 orig_y, orig_sr = librosa.load(original_audio_path, sr=22050)
                 user_y, user_sr = librosa.load(user_audio_path, sr=22050)
-                # 고유 스펙트럼 길이 맞추기(앞부분 기준)
+                
+                # 길이 맞추기
                 min_len = min(len(orig_y), len(user_y))
-                orig_y = orig_y[:min_len]
-                user_y = user_y[:min_len]
+                if min_len > 22050:  # 최소 1초 이상
+                    orig_y = orig_y[:min_len]
+                    user_y = user_y[:min_len]
 
-                # 음높이 추출
-                orig_f0 = librosa.yin(orig_y, fmin=80, fmax=1000, sr=orig_sr)
-                user_f0 = librosa.yin(user_y, fmin=80, fmax=1000, sr=user_sr)
-                orig_f0 = orig_f0[~np.isnan(orig_f0)]
-                user_f0 = user_f0[~np.isnan(user_f0)]
-                if len(user_f0) > 10:
-                    mean_user = np.mean(user_f0)
-                    std_user = np.std(user_f0)
-                    variability = (std_user / mean_user) * 100 if mean_user > 0 else 100
-                    pitch_stability_score = max(0.0, 100 - min(100, variability))
-                if len(orig_f0) > 10 and len(user_f0) > 10:
-                    mean_orig = np.mean(orig_f0)
-                    diff = abs(mean_orig - np.mean(user_f0))
-                    # 차이가 작을수록 높은 점수 (단순 선형)
-                    pitch_match_score = max(0.0, 100 - min(100, diff / 2))
+                    # 음높이 분석
+                    try:
+                        orig_f0 = librosa.yin(orig_y, fmin=80, fmax=1000, sr=orig_sr)
+                        user_f0 = librosa.yin(user_y, fmin=80, fmax=1000, sr=user_sr)
+                        orig_f0 = orig_f0[~np.isnan(orig_f0)]
+                        user_f0 = user_f0[~np.isnan(user_f0)]
+                        
+                        if len(user_f0) > 10:
+                            mean_user = np.mean(user_f0)
+                            std_user = np.std(user_f0)
+                            if mean_user > 0:
+                                variability = (std_user / mean_user) * 100
+                                # 안정성: 변동성이 낮을수록 높은 점수
+                                pitch_stability_score = max(50.0, min(100.0, 100 - variability))
+                        
+                        if len(orig_f0) > 10 and len(user_f0) > 10:
+                            mean_orig = np.mean(orig_f0)
+                            mean_user = np.mean(user_f0)
+                            diff = abs(mean_orig - mean_user)
+                            # 피치 매칭: 차이가 50Hz 이내면 만점, 200Hz 이상이면 기본점수
+                            pitch_match_score = max(50.0, min(100.0, 100 - (diff / 2)))
+                    except Exception:
+                        pass  # 피치 분석 실패 시 기본 점수 유지
 
-                # 에너지(음량) 패턴 유사도: 프레임 RMS 비교 상관계수
-                orig_rms = librosa.feature.rms(y=orig_y)[0]
-                user_rms = librosa.feature.rms(y=user_y)[0]
-                min_frames = min(len(orig_rms), len(user_rms))
-                if min_frames > 10:
-                    corr = np.corrcoef(orig_rms[:min_frames], user_rms[:min_frames])[0, 1]
-                    energy_match_score = max(0.0, corr * 100)
+                    # 에너지 분석
+                    try:
+                        orig_rms = librosa.feature.rms(y=orig_y)[0]
+                        user_rms = librosa.feature.rms(y=user_y)[0]
+                        min_frames = min(len(orig_rms), len(user_rms))
+                        
+                        if min_frames > 10:
+                            # 상관계수 계산
+                            corr_matrix = np.corrcoef(orig_rms[:min_frames], user_rms[:min_frames])
+                            if not np.isnan(corr_matrix[0, 1]):
+                                corr = corr_matrix[0, 1]
+                                # 상관계수를 점수로 변환 (-1~1 -> 50~100)
+                                energy_match_score = max(50.0, min(100.0, 50 + (corr * 50)))
+                    except Exception:
+                        pass  # 에너지 분석 실패 시 기본 점수 유지
             except Exception:
-                pass
+                pass  # librosa 로드 실패 시 기본 점수 유지
 
-        # 발음 / 길이 (텍스트 인식 결과 활용)
-        if recognized_text:
-            pronunciation_score = min(100.0, len(recognized_text.split()) * 4)
-            length_score = pronunciation_score  # 간이: 발음된 양이 곧 길이 매칭
-
-        # 종합: 가중치 단순 배분
+        # 종합 점수 계산 (기본 50점 + 보너스)
         total_score = (
-            pitch_stability_score * 0.30 +
+            pitch_stability_score * 0.25 +
             pitch_match_score * 0.25 +
             energy_match_score * 0.20 +
             pronunciation_score * 0.15 +
-            length_score * 0.10
+            length_score * 0.15
         )
         
         return {
             'success': True,
-            'recognized_text': recognized_text,
+            'recognized_text': recognized_text or "음성 인식 실패 (기본 점수 적용)",
             'pitch_stability_score': round(pitch_stability_score, 1),
             'pitch_match_score': round(pitch_match_score, 1),
             'energy_match_score': round(energy_match_score, 1),
@@ -150,9 +171,8 @@ async def analyze_singing_full(original_audio_path: str, user_audio_path: str) -
 
 
 def get_grade(score: float) -> str:
-    if score >= 95:
-        return "S+"
-    elif score >= 90:
+    """점수에 따른 등급 반환 (50점 기본점수 기준 조정)"""
+    if score >= 90:
         return "S"
     elif score >= 85:
         return "A+"
@@ -166,6 +186,8 @@ def get_grade(score: float) -> str:
         return "C+"
     elif score >= 60:
         return "C"
+    elif score >= 55:
+        return "D+"
     else:
         return "D"
 
@@ -311,19 +333,33 @@ async def finish_karaoke(guild_id: int, client: discord.Client):
                 if result['success']:
                     # 원본 메시지에 답장
                     channel = guild.get_channel(session.channel_id) or guild.system_channel or (guild.text_channels[0] if guild.text_channels else None)
+                    
+                    # 점수에 따른 색상
+                    score = result['total_score']
+                    if score >= 80:
+                        color = 0x2ECC71  # 초록 (A 이상)
+                    elif score >= 70:
+                        color = 0xF39C12  # 주황 (B)
+                    elif score >= 60:
+                        color = 0x3498DB  # 파랑 (C)
+                    else:
+                        color = 0x95A5A6  # 회색 (D)
+                    
                     embed = discord.Embed(
                         title="🎤 전체 곡 채점 결과",
                         description=f"[{session.song_title}]({session.webpage_url})" if session.webpage_url else f"**{session.song_title}**",
-                        color=0x9b59b6
+                        color=color
                     )
-                    embed.add_field(name="🗣️ 발음/길이", value=f"{result['pronunciation_score']}/{result['length_score']}", inline=True)
-                    embed.add_field(name="🎵 피치 안정성", value=f"{result['pitch_stability_score']}", inline=True)
-                    embed.add_field(name="🎯 피치 매칭", value=f"{result['pitch_match_score']}", inline=True)
-                    embed.add_field(name="⚡ 에너지 매칭", value=f"{result['energy_match_score']}", inline=True)
-                    embed.add_field(name="📊 최종 점수", value=f"**{result['total_score']}점 ({result['grade']})**", inline=False)
-                    if result['recognized_text']:
-                        embed.add_field(name="인식된 일부", value=f"```{result['recognized_text'][:120]}```", inline=False)
-                    embed.set_footer(text="실험적 채점: 반주 음원 직접 비교")
+                    embed.add_field(name="🎵 피치 안정성", value=f"{result['pitch_stability_score']}점", inline=True)
+                    embed.add_field(name="🎯 피치 매칭", value=f"{result['pitch_match_score']}점", inline=True)
+                    embed.add_field(name="⚡ 에너지 매칭", value=f"{result['energy_match_score']}점", inline=True)
+                    embed.add_field(name="🗣️ 발음 점수", value=f"{result['pronunciation_score']}점", inline=True)
+                    embed.add_field(name="📏 길이 점수", value=f"{result['length_score']}점", inline=True)
+                    embed.add_field(name="\u200b", value="\u200b", inline=True)  # 빈 칸
+                    embed.add_field(name="📊 최종 점수", value=f"# **{result['total_score']}점 ({result['grade']})**", inline=False)
+                    if result['recognized_text'] and "음성 인식 실패" not in result['recognized_text']:
+                        embed.add_field(name="🎙️ 인식된 가사", value=f"```{result['recognized_text'][:100]}```", inline=False)
+                    embed.set_footer(text="실험적 채점 • 기본 50점 + 분석 보너스")
                     if channel and session.message_id:
                         try:
                             original = await channel.fetch_message(session.message_id)
