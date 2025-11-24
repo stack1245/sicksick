@@ -196,7 +196,7 @@ def get_grade(score: float) -> str:
 async def karaoke(
     ctx: discord.ApplicationContext,
     제목_또는_url: str = discord.Option(str, description="노래의 제목이나 URL"),
-    instrumental: bool = discord.Option(bool, description="검색어일 때 반주(Instrumental) 보정", default=False)
+    mr검색: bool = discord.Option(bool, description="MR/반주 버전으로 검색 (체크 시: MR 재생, 미체크 시: 원곡 재생)", default=True)
 ):
     if not ctx.author.voice:
         await ctx.respond(embed=embed_error("음성 채널에 먼저 참가해주세요"), ephemeral=True)
@@ -209,8 +209,17 @@ async def karaoke(
         return
     
     await ctx.defer()
+    
+    # URL이 아닌 경우 검색어 준비
+    is_url = 제목_또는_url.startswith("http")
+    base_query = 제목_또는_url
+    
     # MR(반주) 버전 다운로드
-    mr_query = 제목_또는_url if 제목_또는_url.startswith("http") else f"{제목_또는_url} instrumental"
+    if mr검색 and not is_url:
+        mr_query = f"{base_query} mr" if "mr" not in base_query.lower() else base_query
+    else:
+        mr_query = base_query
+    
     try:
         with yt_dlp.YoutubeDL(YTDL_DOWNLOAD_OPTIONS) as ydl:
             data = ydl.extract_info(mr_query, download=True)
@@ -225,8 +234,15 @@ async def karaoke(
     except Exception as e:
         await ctx.followup.send(embed=embed_error(f"MR(반주) 다운로드 실패: {str(e)}"), ephemeral=True)
         return
-    # 원곡(보컬 포함) 버전 다운로드
-    original_query = 제목_또는_url if 제목_또는_url.startswith("http") else 제목_또는_url
+    
+    # 원곡(보컬 포함) 버전 다운로드 - MR과 다른 버전 찾기
+    if not is_url:
+        # MR 검색했으면 원곡은 기본 제목으로
+        original_query = base_query if mr검색 else f"{base_query} 원곡"
+    else:
+        # URL인 경우 동일한 영상 사용
+        original_query = base_query
+    
     try:
         with yt_dlp.YoutubeDL(YTDL_DOWNLOAD_OPTIONS) as ydl:
             data = ydl.extract_info(original_query, download=True)
@@ -243,10 +259,20 @@ async def karaoke(
         return
 
     # 초기 임베드 전송 후 메시지 저장
-    # 메시지를 먼저 만들기 위해 아래에서 생성 후 세션 구성
-    title_link = f"[{mr_title or mr_query}]({mr_webpage_url})" if mr_webpage_url else f"**{mr_title or mr_query}**"
-    embed = embed_info(f"{title_link}\n반주(MR) 버전이 재생되며 전체 구간을 녹음합니다.", title="🎤 전체 곡 노래방 모드")
-    embed.add_field(name="📝 안내", value="• 반주 시작과 함께 녹음 시작\n• 재생 종료 또는 `/노래방_중지` 시 채점\n• 피치 안정성/피치 매칭/에너지/발음 기반 종합 점수", inline=False)
+    title_link = f"[{mr_title}]({mr_webpage_url})" if mr_webpage_url else f"**{mr_title}**"
+    embed = embed_info(f"🎵 **재생**: {title_link}\n📊 **채점 기준**: [{original_title}]({original_webpage_url})", title="🎤 노래방 모드 시작")
+    embed.add_field(
+        name="📝 안내", 
+        value=(
+            "• 반주 시작과 함께 **녹음 시작**\n"
+            "• 재생 종료 또는 `/노래방_중지` 시 **자동 채점**\n"
+            "• 원곡 음원과 비교하여 점수 산출\n"
+            "• 피치/에너지/발음 종합 분석"
+        ), 
+        inline=False
+    )
+    embed.add_field(name="🎤 재생 중", value=mr_title[:100], inline=False)
+    embed.add_field(name="📊 채점 기준", value=original_title[:100], inline=False)
     first_message = await ctx.followup.send(embed=embed)
 
     # 세션에 MR/원곡 경로 모두 저장
