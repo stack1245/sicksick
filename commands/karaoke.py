@@ -224,7 +224,7 @@ async def karaoke(
     # 메시지를 먼저 만들기 위해 아래에서 생성 후 세션 구성
     title_link = f"[{mr_title or mr_query}]({mr_webpage_url})" if mr_webpage_url else f"**{mr_title or mr_query}**"
     embed = embed_info(f"{title_link}\n반주(MR) 버전이 재생되며 전체 구간을 녹음합니다.", title="🎤 전체 곡 노래방 모드")
-    embed.add_field(name="📝 안내", value="• 반주 시작과 함께 녹음 시작\n• 재생 종료 또는 `/karaoke_stop` 시 채점\n• 피치 안정성/피치 매칭/에너지/발음 기반 종합 점수", inline=False)
+    embed.add_field(name="📝 안내", value="• 반주 시작과 함께 녹음 시작\n• 재생 종료 또는 `/노래방_중지` 시 채점\n• 피치 안정성/피치 매칭/에너지/발음 기반 종합 점수", inline=False)
     first_message = await ctx.followup.send(embed=embed)
 
     # 세션에 MR/원곡 경로 모두 저장
@@ -348,7 +348,7 @@ async def finish_karaoke(guild_id: int, client: discord.Client):
         del client.karaoke_sessions[guild_id]
 
 
-@discord.slash_command(name="karaoke_stop", description="노래방 녹음을 중지하고 채점합니다")
+@discord.slash_command(name="노래방_중지", description="노래방 녹음을 중지하고 채점합니다")
 async def karaoke_stop(ctx: discord.ApplicationContext):
     guild_id = ctx.guild.id
     
