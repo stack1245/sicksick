@@ -117,8 +117,14 @@ async def play(
         channel = ctx.author.voice.channel
         voice_client = ctx.guild.voice_client
         
-        if not voice_client:
+        # 음성 클라이언트 연결 상태 확인 및 처리
+        if not voice_client or not voice_client.is_connected():
+            if voice_client:
+                await voice_client.disconnect(force=True)
             voice_client = await channel.connect()
+        elif voice_client.channel != channel:
+            # 다른 채널에 연결되어 있으면 이동
+            await voice_client.move_to(channel)
         
         # 먼저 소스 정보만 추출
         source_info = await YTDLSource.create_source(제목_또는_url, loop=ctx.bot.loop)
