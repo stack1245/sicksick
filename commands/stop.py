@@ -12,9 +12,22 @@ async def stop(ctx: discord.ApplicationContext):
     
     guild_id = ctx.guild.id
     queue_count = len(ctx.bot.music_queues.get(guild_id, []))
+    
+    # 재생 중지
+    if voice_client.is_playing():
+        voice_client.stop()
+    
+    # 데이터 정리
     ctx.bot.music_queues.pop(guild_id, None)
     ctx.bot.now_playing.pop(guild_id, None)
-    await voice_client.disconnect()
+    
+    # 안전하게 연결 해제
+    try:
+        await voice_client.disconnect(force=False)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"연결 해제 중 오류 (무시됨): {e}")
     
     msg = "⏹️ 재생을 중지하고 연결을 해제했습니다"
     if queue_count > 0:

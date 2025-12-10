@@ -75,6 +75,26 @@ class MusicBot(discord.Bot):
             except Exception as e:
                 logger.error(f"자동 저장 실패: {e}")
     
+    async def on_voice_state_update(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        """Handle voice state changes, especially bot disconnections."""
+        if member.id != self.user.id:
+            return
+        
+        # 봇이 음성 채널에서 강제 퇴장당했을 때
+        if before.channel and not after.channel:
+            guild_id = before.channel.guild.id
+            # logger.info(f"Guild {guild_id}: 음성 채널에서 연결 해제됨")
+            
+            # 대기열 및 재생 정보 정리
+            self.music_queues.pop(guild_id, None)
+            self.now_playing.pop(guild_id, None)
+            self.karaoke_sessions.pop(guild_id, None)
+    
     async def on_application_command_error(
         self,
         ctx: discord.ApplicationContext,

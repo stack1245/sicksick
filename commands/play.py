@@ -120,11 +120,26 @@ async def play(
         # 음성 클라이언트 연결 상태 확인 및 처리
         if not voice_client or not voice_client.is_connected():
             if voice_client:
-                await voice_client.disconnect(force=True)
-            voice_client = await channel.connect()
+                try:
+                    await voice_client.disconnect(force=True)
+                except Exception as e:
+                    logger.warning(f"기존 연결 해제 중 오류 (무시됨): {e}")
+            try:
+                voice_client = await channel.connect(timeout=10.0, reconnect=True)
+            except asyncio.TimeoutError:
+                await ctx.followup.send(embed=embed_error("음성 채널 연결 시간 초과"))
+                return
+            except Exception as e:
+                await ctx.followup.send(embed=embed_error(f"음성 채널 연결 실패: {str(e)}"))
+                return
         elif voice_client.channel != channel:
             # 다른 채널에 연결되어 있으면 이동
-            await voice_client.move_to(channel)
+            try:
+                await voice_client.move_to(channel)
+            except Exception as e:
+                logger.warning(f"채널 이동 실패, 재연결 시도: {e}")
+                await voice_client.disconnect(force=True)
+                voice_client = await channel.connect(timeout=10.0, reconnect=True)
         
         # 먼저 소스 정보만 추출
         source_info = await YTDLSource.create_source(제목_또는_url, loop=ctx.bot.loop)
@@ -142,9 +157,13 @@ async def play(
             # 재생 직전에 플레이어 생성
             initial_volume = ctx.bot.data_manager.get_guild_volume(guild_id) / 100 if hasattr(ctx.bot, 'data_manager') else 0.05
             player = await YTDLSource.prepare_player(source_info, loop=ctx.bot.loop, volume=initial_volume)
-            voice_client.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), ctx.bot.loop
-            ))
+            
+            def after_playing(error):
+                if error:
+                    logger.error(f"재생 중 오류 발생: {error}")
+                asyncio.run_coroutine_threadsafe(play_next(ctx), ctx.bot.loop)
+            
+            voice_client.play(player, after=after_playing)
             ctx.bot.now_playing[guild_id] = player
             embed = embed_success("", title="🎶 재생 중")
             embed.add_field(name="제목", value=f"[{source_info['title']}]({source_info['webpage_url']})", inline=False)
@@ -206,6 +225,15 @@ async def play_next(ctx):
     voice_client = ctx.guild.voice_client
     
     if not voice_client:
+        logger.debug(f"Guild {guild_id}: 음성 클라이언트 없음, 재생 종료")
+        ctx.bot.now_playing.pop(guild_id, None)
+        return
+    
+    # 연결 상태 확인
+    if not voice_client.is_connected():
+        logger.warning(f"Guild {guild_id}: 음성 연결이 끊어짐, 재생 종료")
+        ctx.bot.music_queues.pop(guild_id, None)
+        ctx.bot.now_playing.pop(guild_id, None)
         return
     
     if guild_id in ctx.bot.music_queues and ctx.bot.music_queues[guild_id]:
@@ -215,15 +243,22 @@ async def play_next(ctx):
             # 재생 직전에 새로운 스트림 URL로 플레이어 생성
             initial_volume = ctx.bot.data_manager.get_guild_volume(guild_id) / 100 if hasattr(ctx.bot, 'data_manager') else 0.05
             player = await YTDLSource.prepare_player(source_info, loop=ctx.bot.loop, volume=initial_volume)
-            voice_client.play(player, after=lambda e: asyncio.run_coroutine_threadsafe(
-                play_next(ctx), ctx.bot.loop
-            ))
+            
+            def after_playing(error):
+                if error:
+                    logger.error(f"재생 중 오류 발생: {error}")
+                asyncio.run_coroutine_threadsafe(play_next(ctx), ctx.bot.loop)
+            
+            voice_client.play(player, after=after_playing)
             ctx.bot.now_playing[guild_id] = player
+            logger.debug(f"Guild {guild_id}: 다음 곡 재생 시작 - {source_info['title']}")
         except Exception as e:
             import traceback
             logger.error(f"다음 곡 재생 중 오류: {e}\n{traceback.format_exc()}")
+            # 오류 발생 시 대기열의 다음 곡 재생 시도
             await play_next(ctx)
     else:
+        logger.debug(f"Guild {guild_id}: 대기열 비어있음, 재생 종료")
         ctx.bot.now_playing.pop(guild_id, None)
 
 
