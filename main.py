@@ -1,4 +1,4 @@
-"""SickSick Music Bot - Discord music player bot."""
+"""SickSick 음악 봇"""
 from __future__ import annotations
 import os
 import asyncio
@@ -19,7 +19,7 @@ logger = logging.getLogger("sicksick")
 
 
 class MusicBot(discord.Bot):
-    """Discord music bot with playlist and karaoke support."""
+    """음악 재생 및 대기열 관리 봇"""
     
     def __init__(self):
         intents = discord.Intents.default()
@@ -66,7 +66,7 @@ class MusicBot(discord.Bot):
             self._auto_save_task = self.loop.create_task(self._auto_save_loop())
     
     async def _auto_save_loop(self) -> None:
-        """Periodically save bot data."""
+        """주기적 데이터 저장"""
         await self.wait_until_ready()
         while not self.is_closed():
             await asyncio.sleep(AUTO_SAVE_INTERVAL)
@@ -81,16 +81,12 @@ class MusicBot(discord.Bot):
         before: discord.VoiceState,
         after: discord.VoiceState,
     ) -> None:
-        """Handle voice state changes, especially bot disconnections."""
+        """음성 채널 상태 변경 처리"""
         if member.id != self.user.id:
             return
         
-        # 봇이 음성 채널에서 강제 퇴장당했을 때
         if before.channel and not after.channel:
             guild_id = before.channel.guild.id
-            # logger.info(f"Guild {guild_id}: 음성 채널에서 연결 해제됨")
-            
-            # 대기열 및 재생 정보 정리
             self.music_queues.pop(guild_id, None)
             self.now_playing.pop(guild_id, None)
             self.karaoke_sessions.pop(guild_id, None)
@@ -109,7 +105,7 @@ class MusicBot(discord.Bot):
             pass
     
     async def close(self) -> None:
-        """Cleanup resources and close bot connection."""
+        """봇 종료 처리"""
         try:
             if self._auto_save_task:
                 self._auto_save_task.cancel()
@@ -124,22 +120,26 @@ class MusicBot(discord.Bot):
 
 
 def main():
-    """Main entry point for the bot."""
+    """봇 실행"""
     token = os.getenv("DISCORD_TOKEN")
     if not token:
-        logger.error("DISCORD_TOKEN이 설정되지 않음")
+        logger.error("DISCORD_TOKEN이 설정되지 않았습니다.")
         return
     
     bot = MusicBot()
-    register_shutdown_callback(lambda: bot.data_manager.save_data())
+    
+    def shutdown_handler():
+        asyncio.create_task(bot.close())
+    
+    register_shutdown_callback(shutdown_handler)
     setup_graceful_shutdown()
     
     try:
         bot.run(token)
     except KeyboardInterrupt:
         pass
-    except Exception as e:
-        logger.error(f"봇 실행 오류: {e}")
+    finally:
+        logger.info("봇 종료됨")
 
 
 if __name__ == "__main__":

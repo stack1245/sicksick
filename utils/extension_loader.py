@@ -1,3 +1,5 @@
+"""확장 로더"""
+from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Dict, List
@@ -6,6 +8,8 @@ from discord.ext import commands
 
 
 class ExtensionLoader:
+    """명령어 확장 동적 로드"""
+    
     def __init__(self, bot: commands.Bot, module_name: str = "Bot"):
         self.bot = bot
         self.module_name = module_name
