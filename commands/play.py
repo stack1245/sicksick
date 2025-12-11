@@ -60,43 +60,73 @@ class YTDLSource(discord.PCMVolumeTransformer):
         """검색어나 URL로부터 소스 정보만 추출 (스트림 URL은 나중에)"""
         loop = loop or asyncio.get_event_loop()
         
-        with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
-            data = await loop.run_in_executor(None, lambda: ydl.extract_info(search, download=False))
-            
-            if "entries" in data:
-                if not data["entries"]:
-                    raise ValueError("검색 결과가 없습니다")
-                data = data["entries"][0]
-            
-            return {
-                "webpage_url": data.get("webpage_url"),
-                "title": data.get("title"),
-                "duration": data.get("duration"),
-                "thumbnail": data.get("thumbnail"),
-                "uploader": data.get("uploader"),
-                "view_count": data.get("view_count"),
-            }
+        try:
+            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+                data = await loop.run_in_executor(None, lambda: ydl.extract_info(search, download=False))
+                
+                if "entries" in data:
+                    if not data["entries"]:
+                        raise ValueError("검색 결과가 없습니다")
+                    data = data["entries"][0]
+                
+                return {
+                    "webpage_url": data.get("webpage_url"),
+                    "title": data.get("title"),
+                    "duration": data.get("duration"),
+                    "thumbnail": data.get("thumbnail"),
+                    "uploader": data.get("uploader"),
+                    "view_count": data.get("view_count"),
+                }
+        except yt_dlp.utils.DownloadError as e:
+            error_msg = str(e)
+            if "Private video" in error_msg:
+                raise ValueError("비공개 비디오입니다. 접근할 수 없습니다.")
+            elif "Video unavailable" in error_msg:
+                raise ValueError("비디오를 사용할 수 없습니다.")
+            elif "This video is not available" in error_msg:
+                raise ValueError("이 비디오는 사용할 수 없습니다.")
+            elif "members-only content" in error_msg:
+                raise ValueError("멤버십 전용 콘텐츠입니다.")
+            elif "blocked" in error_msg.lower():
+                raise ValueError("이 비디오는 차단되었거나 지역 제한이 있습니다.")
+            else:
+                raise ValueError(f"비디오를 불러올 수 없습니다: {error_msg}")
     
     @classmethod
     async def prepare_player(cls, source_info, *, loop=None, volume=0.05):
         """재생 직전에 새로운 스트림 URL을 가져와서 플레이어 생성"""
         loop = loop or asyncio.get_event_loop()
         
-        with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
-            data = await loop.run_in_executor(
-                None, lambda: ydl.extract_info(source_info["webpage_url"], download=False)
-            )
-            
-            if "entries" in data:
-                if not data["entries"]:
-                    raise ValueError("검색 결과가 없습니다")
-                data = data["entries"][0]
-            
-            # source_info의 정보를 유지하면서 새로운 스트림 URL 사용
-            data.update(source_info)
-            filename = data["url"]
-            
-            return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data, volume=volume)
+        try:
+            with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+                data = await loop.run_in_executor(
+                    None, lambda: ydl.extract_info(source_info["webpage_url"], download=False)
+                )
+                
+                if "entries" in data:
+                    if not data["entries"]:
+                        raise ValueError("검색 결과가 없습니다")
+                    data = data["entries"][0]
+                
+                # source_info의 정보를 유지하면서 새로운 스트림 URL 사용
+                data.update(source_info)
+                filename = data["url"]
+                
+                return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data, volume=volume)
+        except yt_dlp.utils.DownloadError as e:
+            error_msg = str(e)
+            if "Private video" in error_msg:
+                raise ValueError("비공개 비디오입니다. 접근할 수 없습니다.")
+            elif "Video unavailable" in error_msg:
+                raise ValueError("비디오를 사용할 수 없습니다.")
+            elif "This video is not available" in error_msg:
+                raise ValueError("이 비디오는 사용할 수 없습니다.")
+            elif "members-only content" in error_msg:
+                raise ValueError("멤버십 전용 콘텐츠입니다.")
+            elif "blocked" in error_msg.lower():
+                raise ValueError("이 비디오는 차단되었거나 지역 제한이 있습니다.")
+            else:
+                raise ValueError(f"비디오를 불러올 수 없습니다: {error_msg}")
 
 
 @discord.slash_command(name="재생", description="노래를 재생합니다")
