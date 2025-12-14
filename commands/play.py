@@ -156,14 +156,30 @@ async def play(
         if not voice_client or not voice_client.is_connected():
             if voice_client:
                 try:
+                    if voice_client.is_playing():
+                        voice_client.stop()
                     await voice_client.disconnect(force=True)
                 except Exception as e:
                     logger.warning(f"기존 연결 해제 중 오류 (무시됨): {e}")
+                # 연결 해제 후 대기
+                await asyncio.sleep(0.5)
             try:
-                voice_client = await channel.connect(timeout=10.0, reconnect=True)
+                voice_client = await channel.connect(timeout=15.0, reconnect=True)
+                # 연결 후 안정화 대기
+                await asyncio.sleep(0.3)
             except asyncio.TimeoutError:
                 await ctx.followup.send(embed=embed_error("음성 채널 연결 시간 초과"))
                 return
+            except discord.ClientException as e:
+                if "already connected" in str(e).lower():
+                    # 이미 연결되어 있다면 기존 연결 사용
+                    voice_client = ctx.guild.voice_client
+                    if not voice_client:
+                        await ctx.followup.send(embed=embed_error("음성 연결 상태 불일치"))
+                        return
+                else:
+                    await ctx.followup.send(embed=embed_error(f"음성 채널 연결 실패: {str(e)}"))
+                    return
             except Exception as e:
                 await ctx.followup.send(embed=embed_error(f"음성 채널 연결 실패: {str(e)}"))
                 return
@@ -173,8 +189,16 @@ async def play(
                 await voice_client.move_to(channel)
             except Exception as e:
                 logger.warning(f"채널 이동 실패, 재연결 시도: {e}")
-                await voice_client.disconnect(force=True)
-                voice_client = await channel.connect(timeout=10.0, reconnect=True)
+                try:
+                    if voice_client.is_playing():
+                        voice_client.stop()
+                    await voice_client.disconnect(force=True)
+                    await asyncio.sleep(0.5)
+                    voice_client = await channel.connect(timeout=15.0, reconnect=True)
+                    await asyncio.sleep(0.3)
+                except Exception as reconnect_error:
+                    await ctx.followup.send(embed=embed_error(f"재연결 실패: {str(reconnect_error)}"))
+                    return
         
         # 먼저 소스 정보만 추출
         source_info = await YTDLSource.create_source(제목_또는_url, loop=ctx.bot.loop)
@@ -208,14 +232,33 @@ async def play(
             if lyrics:
                 lyrics_msg = await ctx.followup.send(embed=embed_info("싱크 가사 준비 중..."))
                 async def send_lyrics():
-                    start_time = asyncio.get_event_loop().time()
-                    for t, line in lyrics:
-                        now = asyncio.get_event_loop().time()
-                        wait_sec = t - (now - start_time)
-                        if wait_sec > 0:
-                            await asyncio.sleep(wait_sec)
-                        await lyrics_msg.edit(embed=embed_info(line))
-                asyncio.create_task(send_lyrics())
+                    try:
+                        start_time = asyncio.get_event_loop().time()
+                        for t, line in lyrics:
+                            now = asyncio.get_event_loop().time()
+                            wait_sec = t - (now - start_time)
+                            if wait_sec > 0:
+                                await asyncio.sleep(wait_sec)
+                            try:
+                                await lyrics_msg.edit(embed=embed_info(line))
+                            except discord.NotFound:
+                                logger.debug("가사 메시지가 삭제됨")
+                                break
+                            except Exception as e:
+                                logger.warning(f"가사 업데이트 오류: {e}")
+                                break
+                    except asyncio.CancelledError:
+                        logger.debug("가사 Task 취소됨")
+                    except Exception as e:
+                        logger.error(f"가사 표시 오류: {e}")
+                
+                # Task 추적 - 이전 Task가 있으면 취소
+                if guild_id in ctx.bot.lyrics_tasks:
+                    old_task = ctx.bot.lyrics_tasks[guild_id]
+                    if not old_task.done():
+                        old_task.cancel()
+                
+                ctx.bot.lyrics_tasks[guild_id] = asyncio.create_task(send_lyrics())
             else:
                 await ctx.followup.send(embed=embed_info("싱크 가사를 찾을 수 없습니다."))
         
@@ -262,6 +305,11 @@ async def play_next(ctx):
     if not voice_client:
         logger.debug(f"Guild {guild_id}: 음성 클라이언트 없음, 재생 종료")
         ctx.bot.now_playing.pop(guild_id, None)
+        # 가사 Task 정리
+        if guild_id in ctx.bot.lyrics_tasks:
+            task = ctx.bot.lyrics_tasks.pop(guild_id)
+            if not task.done():
+                task.cancel()
         return
     
     # 연결 상태 확인
@@ -269,12 +317,23 @@ async def play_next(ctx):
         logger.warning(f"Guild {guild_id}: 음성 연결이 끊어짐, 재생 종료")
         ctx.bot.music_queues.pop(guild_id, None)
         ctx.bot.now_playing.pop(guild_id, None)
+        # 가사 Task 정리
+        if guild_id in ctx.bot.lyrics_tasks:
+            task = ctx.bot.lyrics_tasks.pop(guild_id)
+            if not task.done():
+                task.cancel()
         return
     
     if guild_id in ctx.bot.music_queues and ctx.bot.music_queues[guild_id]:
         source_info = ctx.bot.music_queues[guild_id].pop(0)
         
         try:
+            # 이전 가사 Task 취소
+            if guild_id in ctx.bot.lyrics_tasks:
+                old_task = ctx.bot.lyrics_tasks.pop(guild_id)
+                if not old_task.done():
+                    old_task.cancel()
+            
             # 재생 직전에 새로운 스트림 URL로 플레이어 생성
             initial_volume = ctx.bot.data_manager.get_guild_volume(guild_id) / 100 if hasattr(ctx.bot, 'data_manager') else 0.05
             player = await YTDLSource.prepare_player(source_info, loop=ctx.bot.loop, volume=initial_volume)
@@ -282,7 +341,10 @@ async def play_next(ctx):
             def after_playing(error):
                 if error:
                     logger.error(f"재생 중 오류 발생: {error}")
-                asyncio.run_coroutine_threadsafe(play_next(ctx), ctx.bot.loop)
+                try:
+                    asyncio.run_coroutine_threadsafe(play_next(ctx), ctx.bot.loop)
+                except Exception as e:
+                    logger.error(f"다음 곡 예약 실패: {e}")
             
             voice_client.play(player, after=after_playing)
             ctx.bot.now_playing[guild_id] = player
@@ -295,6 +357,11 @@ async def play_next(ctx):
     else:
         logger.debug(f"Guild {guild_id}: 대기열 비어있음, 재생 종료")
         ctx.bot.now_playing.pop(guild_id, None)
+        # 가사 Task 정리
+        if guild_id in ctx.bot.lyrics_tasks:
+            task = ctx.bot.lyrics_tasks.pop(guild_id)
+            if not task.done():
+                task.cancel()
 
 
 def setup(bot):

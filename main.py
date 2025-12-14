@@ -34,8 +34,10 @@ class MusicBot(discord.Bot):
         self.music_queues = {}
         self.now_playing = {}
         self.karaoke_sessions = {}
+        self.lyrics_tasks = {}  # 가사 표시 Task 추적
         self._commands_loaded = False
         self._auto_save_task: Optional[asyncio.Task] = None
+        self._closing = False
     
     async def on_ready(self) -> None:
         if not self.user:
@@ -87,6 +89,17 @@ class MusicBot(discord.Bot):
         
         if before.channel and not after.channel:
             guild_id = before.channel.guild.id
+            
+            # 실행 중인 가사 Task 취소
+            if guild_id in self.lyrics_tasks:
+                task = self.lyrics_tasks.pop(guild_id)
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+            
             self.music_queues.pop(guild_id, None)
             self.now_playing.pop(guild_id, None)
             self.karaoke_sessions.pop(guild_id, None)
@@ -106,13 +119,44 @@ class MusicBot(discord.Bot):
     
     async def close(self) -> None:
         """봇 종료 처리"""
+        if self._closing:
+            return
+        self._closing = True
+        
         try:
-            if self._auto_save_task:
+            logger.info("봇 종료 시작...")
+            
+            # 자동 저장 Task 취소
+            if self._auto_save_task and not self._auto_save_task.done():
                 self._auto_save_task.cancel()
+                try:
+                    await self._auto_save_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # 모든 가사 Task 취소
+            for guild_id, task in list(self.lyrics_tasks.items()):
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+            self.lyrics_tasks.clear()
+            
+            # 데이터 저장
             self.data_manager.save_data()
             
-            for vc in self.voice_clients:
-                await vc.disconnect()
+            # 모든 음성 연결 종료
+            for vc in list(self.voice_clients):
+                try:
+                    if vc.is_playing():
+                        vc.stop()
+                    await vc.disconnect(force=True)
+                except Exception as e:
+                    logger.warning(f"음성 연결 종료 실패: {e}")
+            
+            logger.info("봇 종료 완료")
         except Exception as e:
             logger.error(f"종료 처리 실패: {e}")
         finally:
