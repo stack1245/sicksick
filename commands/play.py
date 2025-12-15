@@ -324,9 +324,30 @@ async def play_next(ctx):
                 task.cancel()
         return
     
-    if guild_id in ctx.bot.music_queues and ctx.bot.music_queues[guild_id]:
+    # 반복 모드 확인
+    loop_mode = ctx.bot.loop_mode.get(guild_id, "off") if hasattr(ctx.bot, 'loop_mode') else "off"
+    
+    # 현재 곡 반복 모드
+    if loop_mode == "one" and guild_id in ctx.bot.now_playing:
+        current_song_data = {
+            'webpage_url': ctx.bot.now_playing[guild_id].webpage_url,
+            'title': ctx.bot.now_playing[guild_id].title,
+            'duration': ctx.bot.now_playing[guild_id].duration,
+            'thumbnail': ctx.bot.now_playing[guild_id].thumbnail,
+            'uploader': getattr(ctx.bot.now_playing[guild_id], 'uploader', None),
+            'view_count': getattr(ctx.bot.now_playing[guild_id], 'view_count', None),
+        }
+        source_info = current_song_data
+    elif guild_id in ctx.bot.music_queues and ctx.bot.music_queues[guild_id]:
         source_info = ctx.bot.music_queues[guild_id].pop(0)
         
+        # 대기열 반복 모드 - 재생한 곡을 대기열 끝에 추가
+        if loop_mode == "all":
+            ctx.bot.music_queues[guild_id].append(source_info.copy())
+    else:
+        source_info = None
+    
+    if source_info:
         try:
             # 이전 가사 Task 취소
             if guild_id in ctx.bot.lyrics_tasks:
@@ -355,13 +376,22 @@ async def play_next(ctx):
             # 오류 발생 시 대기열의 다음 곡 재생 시도
             await play_next(ctx)
     else:
-        logger.debug(f"Guild {guild_id}: 대기열 비어있음, 재생 종료")
+        logger.info(f"Guild {guild_id}: 대기열 비어있음, 음성 채널에서 나가기")
         ctx.bot.now_playing.pop(guild_id, None)
         # 가사 Task 정리
         if guild_id in ctx.bot.lyrics_tasks:
             task = ctx.bot.lyrics_tasks.pop(guild_id)
             if not task.done():
                 task.cancel()
+        
+        # 음성 채널에서 나가기
+        try:
+            if voice_client.is_playing():
+                voice_client.stop()
+            await voice_client.disconnect(force=False)
+            logger.info(f"Guild {guild_id}: 음성 채널에서 나감")
+        except Exception as e:
+            logger.error(f"음성 채널 나가기 실패: {e}")
 
 
 def setup(bot):

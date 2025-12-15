@@ -35,6 +35,7 @@ class MusicBot(discord.Bot):
         self.now_playing = {}
         self.karaoke_sessions = {}
         self.lyrics_tasks = {}  # 가사 표시 Task 추적
+        self.loop_mode = {}  # 반복 모드 (off, one, all)
         self._commands_loaded = False
         self._auto_save_task: Optional[asyncio.Task] = None
         self._closing = False

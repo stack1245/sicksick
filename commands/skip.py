@@ -9,8 +9,27 @@ async def skip(ctx: discord.ApplicationContext):
     if not voice_client or not voice_client.is_playing():
         await ctx.respond(embed=embed_error("🚫 재생 중인 노래가 없습니다"), ephemeral=True)
         return
+    
+    guild_id = ctx.guild.id
+    queue_count = len(ctx.bot.music_queues.get(guild_id, []))
+    
+    # 현재 재생 중인 곡 정보
+    current_song = None
+    if guild_id in ctx.bot.now_playing:
+        current_song = ctx.bot.now_playing[guild_id]
+    
     voice_client.stop()
-    await ctx.respond(embed=embed_info("⏩ 노래를 건너뛰었습니다"))
+    
+    msg = "⏩ 노래를 건너뛰었습니다"
+    if current_song:
+        msg = f"⏩ **{current_song.title}**을(를) 건너뛰었습니다"
+    
+    if queue_count > 0:
+        msg += f"\n\n🔜 다음 곡 재생 중... ({queue_count}곡 대기)"
+    else:
+        msg += "\n\n📦 대기열이 비어있습니다. 음성 채널에서 나갑니다."
+    
+    await ctx.respond(embed=embed_info(msg))
 
 
 def setup(bot):
