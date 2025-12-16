@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 async def stats(ctx: discord.ApplicationContext):
     """봇의 전체 통계 정보 표시"""
     
-    await ctx.defer(ephemeral=False)
+    await ctx.defer()
     
     guilds = ctx.bot.guilds
     total_servers = len(guilds)

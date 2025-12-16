@@ -122,11 +122,11 @@ async def servers(ctx: discord.ApplicationContext):
     
     embeds.append(stats_embed)
     
-    # 첫 번째 embed만 followup으로 보내고 나머지는 send
+    # 모든 embed를 followup으로 전송
     await ctx.followup.send(embed=embeds[0], ephemeral=True)
     
     for embed in embeds[1:]:
-        await ctx.send(embed=embed, ephemeral=True)
+        await ctx.followup.send(embed=embed, ephemeral=True)
 
 
 @servers.error
