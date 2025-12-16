@@ -370,6 +370,12 @@ async def play_next(ctx):
             voice_client.play(player, after=after_playing)
             ctx.bot.now_playing[guild_id] = player
             logger.debug(f"Guild {guild_id}: 다음 곡 재생 시작 - {source_info['title']}")
+            
+            # 봇 상태 업데이트
+            try:
+                asyncio.create_task(ctx.bot._update_status())
+            except Exception as e:
+                logger.error(f"상태 업데이트 실패: {e}")
         except Exception as e:
             import traceback
             logger.error(f"다음 곡 재생 중 오류: {e}\n{traceback.format_exc()}")
@@ -390,6 +396,12 @@ async def play_next(ctx):
                 voice_client.stop()
             await voice_client.disconnect(force=False)
             logger.info(f"Guild {guild_id}: 음성 채널에서 나감")
+            
+            # 봇 상태 업데이트
+            try:
+                await ctx.bot._update_status()
+            except Exception as e:
+                logger.error(f"상태 업데이트 실패: {e}")
         except Exception as e:
             logger.error(f"음성 채널 나가기 실패: {e}")
 
