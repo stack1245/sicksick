@@ -6,7 +6,15 @@ from utils import embed_error, embed_info
 async def skip(ctx: discord.ApplicationContext):
     voice_client = ctx.guild.voice_client
     
-    if not voice_client or not voice_client.is_playing():
+    if not voice_client:
+        await ctx.respond(embed=embed_error("🚫 음성 채널에 연결되어 있지 않습니다"), ephemeral=True)
+        return
+    
+    if not voice_client.is_connected():
+        await ctx.respond(embed=embed_error("🚫 음성 연결이 끊어졌습니다"), ephemeral=True)
+        return
+    
+    if not voice_client.is_playing():
         await ctx.respond(embed=embed_error("🚫 재생 중인 노래가 없습니다"), ephemeral=True)
         return
     

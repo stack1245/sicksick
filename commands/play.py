@@ -25,11 +25,15 @@ YTDL_OPTIONS = {
     "referer": "https://www.youtube.com/",
     "socket_timeout": 30,
     "retries": 10,
+    "fragment_retries": 10,
+    "extractor_retries": 3,
+    "file_access_retries": 3,
+    "http_chunk_size": 10485760,  # 10MB
 }
 
 FFMPEG_OPTIONS = {
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options": "-vn -bufsize 512k"
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -loglevel error",
+    "options": "-vn -bufsize 2048k -sn"
 }
 
 
@@ -161,41 +165,68 @@ async def play(
                     await voice_client.disconnect(force=True)
                 except Exception as e:
                     logger.warning(f"기존 연결 해제 중 오류 (무시됨): {e}")
+                voice_client = None
                 # 연결 해제 후 대기
-                await asyncio.sleep(0.5)
-            try:
-                voice_client = await channel.connect(timeout=15.0, reconnect=True)
-                # 연결 후 안정화 대기
-                await asyncio.sleep(0.3)
-            except asyncio.TimeoutError:
-                await ctx.followup.send(embed=embed_error("음성 채널 연결 시간 초과"))
-                return
-            except discord.ClientException as e:
-                if "already connected" in str(e).lower():
-                    # 이미 연결되어 있다면 기존 연결 사용
-                    voice_client = ctx.guild.voice_client
-                    if not voice_client:
-                        await ctx.followup.send(embed=embed_error("음성 연결 상태 불일치"))
+                await asyncio.sleep(0.8)
+            
+            # 새로운 연결 시도
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    voice_client = await channel.connect(timeout=15.0, reconnect=True)
+                    # 연결 후 안정화 대기
+                    await asyncio.sleep(0.5)
+                    # 연결 확인
+                    if voice_client.is_connected():
+                        break
+                except asyncio.TimeoutError:
+                    logger.warning(f"연결 시도 {attempt + 1}/{max_retries} 시간 초과")
+                    if attempt == max_retries - 1:
+                        await ctx.followup.send(embed=embed_error("음성 채널 연결 시간 초과"))
                         return
-                else:
-                    await ctx.followup.send(embed=embed_error(f"음성 채널 연결 실패: {str(e)}"))
-                    return
-            except Exception as e:
-                await ctx.followup.send(embed=embed_error(f"음성 채널 연결 실패: {str(e)}"))
+                    await asyncio.sleep(1)
+                except discord.ClientException as e:
+                    if "already connected" in str(e).lower():
+                        # 이미 연결되어 있다면 기존 연결 사용
+                        voice_client = ctx.guild.voice_client
+                        if voice_client and voice_client.is_connected():
+                            break
+                        logger.warning(f"연결 상태 불일치, 재시도 {attempt + 1}/{max_retries}")
+                        await asyncio.sleep(1)
+                    else:
+                        if attempt == max_retries - 1:
+                            await ctx.followup.send(embed=embed_error(f"음성 채널 연결 실패: {str(e)}"))
+                            return
+                        await asyncio.sleep(1)
+                except Exception as e:
+                    logger.error(f"연결 시도 {attempt + 1}/{max_retries} 실패: {e}")
+                    if attempt == max_retries - 1:
+                        await ctx.followup.send(embed=embed_error(f"음성 채널 연결 실패: {str(e)}"))
+                        return
+                    await asyncio.sleep(1)
+            
+            # 최종 연결 확인
+            if not voice_client or not voice_client.is_connected():
+                await ctx.followup.send(embed=embed_error("음성 채널에 연결할 수 없습니다"))
                 return
+                
         elif voice_client.channel != channel:
             # 다른 채널에 연결되어 있으면 이동
             try:
                 await voice_client.move_to(channel)
+                await asyncio.sleep(0.3)
             except Exception as e:
                 logger.warning(f"채널 이동 실패, 재연결 시도: {e}")
                 try:
                     if voice_client.is_playing():
                         voice_client.stop()
                     await voice_client.disconnect(force=True)
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.8)
                     voice_client = await channel.connect(timeout=15.0, reconnect=True)
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(0.5)
+                    if not voice_client.is_connected():
+                        await ctx.followup.send(embed=embed_error("재연결 실패"))
+                        return
                 except Exception as reconnect_error:
                     await ctx.followup.send(embed=embed_error(f"재연결 실패: {str(reconnect_error)}"))
                     return
@@ -207,12 +238,25 @@ async def play(
         if guild_id not in ctx.bot.music_queues:
             ctx.bot.music_queues[guild_id] = []
         
-        if voice_client.is_playing():
+        # 재생 상태 재확인
+        is_currently_playing = voice_client.is_connected() and voice_client.is_playing()
+        
+        if is_currently_playing:
             # 대기열에는 소스 정보만 저장
             ctx.bot.music_queues[guild_id].append(source_info)
             embed = embed_info("", title="🎵 재생목록에 추가")
             embed.add_field(name="제목", value=f"[{source_info['title']}]({source_info['webpage_url']})", inline=False)
         else:
+            # 연결 상태 최종 확인
+            if not voice_client.is_connected():
+                await ctx.followup.send(embed=embed_error("음성 연결이 끊어졌습니다"))
+                return
+            
+            # 이전에 재생 중이던 것이 있다면 정리
+            if voice_client.is_playing():
+                voice_client.stop()
+                await asyncio.sleep(0.2)
+            
             # 재생 직전에 플레이어 생성
             initial_volume = ctx.bot.data_manager.get_guild_volume(guild_id) / 100 if hasattr(ctx.bot, 'data_manager') else 0.05
             player = await YTDLSource.prepare_player(source_info, loop=ctx.bot.loop, volume=initial_volume)
@@ -220,12 +264,20 @@ async def play(
             def after_playing(error):
                 if error:
                     logger.error(f"재생 중 오류 발생: {error}")
-                asyncio.run_coroutine_threadsafe(play_next(ctx), ctx.bot.loop)
+                try:
+                    asyncio.run_coroutine_threadsafe(play_next(ctx), ctx.bot.loop)
+                except Exception as e:
+                    logger.error(f"다음 곡 예약 실패: {e}")
             
-            voice_client.play(player, after=after_playing)
-            ctx.bot.now_playing[guild_id] = player
-            embed = embed_success("", title="🎶 재생 중")
-            embed.add_field(name="제목", value=f"[{source_info['title']}]({source_info['webpage_url']})", inline=False)
+            try:
+                voice_client.play(player, after=after_playing)
+                ctx.bot.now_playing[guild_id] = player
+                embed = embed_success("", title="🎶 재생 중")
+                embed.add_field(name="제목", value=f"[{source_info['title']}]({source_info['webpage_url']})", inline=False)
+            except discord.ClientException as e:
+                logger.error(f"재생 시작 실패: {e}")
+                await ctx.followup.send(embed=embed_error(f"재생 시작 실패: {str(e)}"))
+                return
 
             # 싱크 가사 표시 (LRC)
             lyrics = await fetch_lrc(source_info['title'])
@@ -305,6 +357,7 @@ async def play_next(ctx):
     if not voice_client:
         logger.debug(f"Guild {guild_id}: 음성 클라이언트 없음, 재생 종료")
         ctx.bot.now_playing.pop(guild_id, None)
+        ctx.bot.music_queues.pop(guild_id, None)
         # 가사 Task 정리
         if guild_id in ctx.bot.lyrics_tasks:
             task = ctx.bot.lyrics_tasks.pop(guild_id)
@@ -322,6 +375,11 @@ async def play_next(ctx):
             task = ctx.bot.lyrics_tasks.pop(guild_id)
             if not task.done():
                 task.cancel()
+        # 재연결 시도
+        try:
+            await voice_client.disconnect(force=True)
+        except Exception:
+            pass
         return
     
     # 반복 모드 확인
@@ -355,6 +413,18 @@ async def play_next(ctx):
                 if not old_task.done():
                     old_task.cancel()
             
+            # 연결 상태 재확인
+            if not voice_client.is_connected():
+                logger.warning(f"Guild {guild_id}: 다음 곡 재생 중 연결 끊김")
+                ctx.bot.music_queues.pop(guild_id, None)
+                ctx.bot.now_playing.pop(guild_id, None)
+                return
+            
+            # 이전 재생 정리
+            if voice_client.is_playing():
+                voice_client.stop()
+                await asyncio.sleep(0.2)
+            
             # 재생 직전에 새로운 스트림 URL로 플레이어 생성
             initial_volume = ctx.bot.data_manager.get_guild_volume(guild_id) / 100 if hasattr(ctx.bot, 'data_manager') else 0.05
             player = await YTDLSource.prepare_player(source_info, loop=ctx.bot.loop, volume=initial_volume)
@@ -367,9 +437,15 @@ async def play_next(ctx):
                 except Exception as e:
                     logger.error(f"다음 곡 예약 실패: {e}")
             
-            voice_client.play(player, after=after_playing)
-            ctx.bot.now_playing[guild_id] = player
-            logger.debug(f"Guild {guild_id}: 다음 곡 재생 시작 - {source_info['title']}")
+            try:
+                voice_client.play(player, after=after_playing)
+                ctx.bot.now_playing[guild_id] = player
+                logger.debug(f"Guild {guild_id}: 다음 곡 재생 시작 - {source_info['title']}")
+            except discord.ClientException as e:
+                logger.error(f"Guild {guild_id}: 다음 곡 재생 실패 - {e}")
+                # 재생 실패 시 다음 곡 시도
+                await play_next(ctx)
+                return
             
             # 봇 상태 업데이트
             try:

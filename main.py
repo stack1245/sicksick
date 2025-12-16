@@ -124,6 +124,7 @@ class MusicBot(discord.Bot):
         
         if before.channel and not after.channel:
             guild_id = before.channel.guild.id
+            logger.info(f"Guild {guild_id}: 음성 채널에서 나감")
             
             # 실행 중인 가사 Task 취소
             if guild_id in self.lyrics_tasks:
@@ -138,6 +139,13 @@ class MusicBot(discord.Bot):
             self.music_queues.pop(guild_id, None)
             self.now_playing.pop(guild_id, None)
             self.karaoke_sessions.pop(guild_id, None)
+            self.loop_mode.pop(guild_id, None)
+            
+            # 상태 업데이트
+            try:
+                await self._update_status()
+            except Exception as e:
+                logger.error(f"상태 업데이트 실패: {e}")
     
     async def on_application_command_error(
         self,
@@ -146,9 +154,27 @@ class MusicBot(discord.Bot):
     ) -> None:
         logger.error(f"명령어 오류: {ctx.command.name if ctx.command else '알 수 없음'} - {error}")
         
+        # Voice Client 관련 오류 특별 처리
+        if isinstance(error, discord.ClientException):
+            error_str = str(error).lower()
+            if "not connected" in error_str or "already playing" in error_str:
+                logger.warning(f"Voice client 상태 오류: {error}")
+                # Voice client 정리 시도
+                if ctx.guild and ctx.guild.voice_client:
+                    try:
+                        vc = ctx.guild.voice_client
+                        if vc.is_playing():
+                            vc.stop()
+                        await vc.disconnect(force=True)
+                        logger.info(f"Guild {ctx.guild.id}: Voice client 강제 정리 완료")
+                    except Exception as cleanup_error:
+                        logger.error(f"Voice client 정리 실패: {cleanup_error}")
+        
         try:
             if not ctx.response.is_done():
                 await ctx.respond(f"오류가 발생했습니다: {error}", ephemeral=True)
+            else:
+                await ctx.followup.send(f"오류가 발생했습니다: {error}", ephemeral=True)
         except Exception:
             pass
     
