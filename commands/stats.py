@@ -46,20 +46,6 @@ async def stats(ctx: discord.ApplicationContext):
     )
     
     await ctx.followup.send(embed=embed)
-    logger.info(f"통계 명령어 실행 - {ctx.author} (서버: {ctx.guild.name})")
-
-
-@stats.error
-async def stats_error(ctx: discord.ApplicationContext, error: discord.DiscordException):
-    """에러 핸들러"""
-    logger.error(f"Stats command error: {error}")
-    try:
-        await ctx.respond(
-            f"통계를 불러오는 중 오류가 발생했습니다: {error}",
-            ephemeral=True
-        )
-    except:
-        pass
 
 
 def setup(bot):
