@@ -169,29 +169,23 @@ async def play(
                 # 연결 해제 후 대기
                 await asyncio.sleep(0.8)
             
-            # 새로운 연결 시도
             max_retries = 3
             for attempt in range(max_retries):
                 try:
                     voice_client = await channel.connect(timeout=15.0, reconnect=True)
-                    # 연결 후 안정화 대기
                     await asyncio.sleep(0.5)
-                    # 연결 확인
                     if voice_client.is_connected():
                         break
                 except asyncio.TimeoutError:
-                    logger.warning(f"연결 시도 {attempt + 1}/{max_retries} 시간 초과")
                     if attempt == max_retries - 1:
                         await ctx.followup.send(embed=embed_error("음성 채널 연결 시간 초과"))
                         return
                     await asyncio.sleep(1)
                 except discord.ClientException as e:
                     if "already connected" in str(e).lower():
-                        # 이미 연결되어 있다면 기존 연결 사용
                         voice_client = ctx.guild.voice_client
                         if voice_client and voice_client.is_connected():
                             break
-                        logger.warning(f"연결 상태 불일치, 재시도 {attempt + 1}/{max_retries}")
                         await asyncio.sleep(1)
                     else:
                         if attempt == max_retries - 1:
@@ -199,8 +193,8 @@ async def play(
                             return
                         await asyncio.sleep(1)
                 except Exception as e:
-                    logger.error(f"연결 시도 {attempt + 1}/{max_retries} 실패: {e}")
                     if attempt == max_retries - 1:
+                        logger.error(f"연결 실패: {e}")
                         await ctx.followup.send(embed=embed_error(f"음성 채널 연결 실패: {str(e)}"))
                         return
                     await asyncio.sleep(1)
@@ -211,12 +205,10 @@ async def play(
                 return
                 
         elif voice_client.channel != channel:
-            # 다른 채널에 연결되어 있으면 이동
             try:
                 await voice_client.move_to(channel)
                 await asyncio.sleep(0.3)
             except Exception as e:
-                logger.warning(f"채널 이동 실패, 재연결 시도: {e}")
                 try:
                     if voice_client.is_playing():
                         voice_client.stop()
@@ -228,6 +220,7 @@ async def play(
                         await ctx.followup.send(embed=embed_error("재연결 실패"))
                         return
                 except Exception as reconnect_error:
+                    logger.error(f"재연결 실패: {reconnect_error}")
                     await ctx.followup.send(embed=embed_error(f"재연결 실패: {str(reconnect_error)}"))
                     return
         
@@ -355,34 +348,26 @@ async def play_next(ctx):
     voice_client = ctx.guild.voice_client
     
     if not voice_client:
-        logger.debug(f"Guild {guild_id}: 음성 클라이언트 없음, 재생 종료")
         ctx.bot.now_playing.pop(guild_id, None)
         ctx.bot.music_queues.pop(guild_id, None)
-        # 가사 Task 정리
         if guild_id in ctx.bot.lyrics_tasks:
             task = ctx.bot.lyrics_tasks.pop(guild_id)
             if not task.done():
                 task.cancel()
         return
     
-    # 연결 상태 확인
     if not voice_client.is_connected():
-        logger.warning(f"Guild {guild_id}: 음성 연결이 끊어짐, 재생 종료")
         ctx.bot.music_queues.pop(guild_id, None)
         ctx.bot.now_playing.pop(guild_id, None)
-        # 가사 Task 정리
         if guild_id in ctx.bot.lyrics_tasks:
             task = ctx.bot.lyrics_tasks.pop(guild_id)
             if not task.done():
                 task.cancel()
-        # 재연결 시도
         try:
             await voice_client.disconnect(force=True)
         except Exception:
             pass
         return
-    
-    # 반복 모드 확인
     loop_mode = ctx.bot.loop_mode.get(guild_id, "off") if hasattr(ctx.bot, 'loop_mode') else "off"
     
     # 현재 곡 반복 모드
@@ -413,14 +398,14 @@ async def play_next(ctx):
                 if not old_task.done():
                     old_task.cancel()
             
-            # 연결 상태 재확인
             if not voice_client.is_connected():
-                logger.warning(f"Guild {guild_id}: 다음 곡 재생 중 연결 끊김")
                 ctx.bot.music_queues.pop(guild_id, None)
                 ctx.bot.now_playing.pop(guild_id, None)
                 return
             
-            # 이전 재생 정리
+            if voice_client.is_playing():
+                voice_client.stop()
+                await asyncio.sleep(0.2)
             if voice_client.is_playing():
                 voice_client.stop()
                 await asyncio.sleep(0.2)
@@ -440,10 +425,8 @@ async def play_next(ctx):
             try:
                 voice_client.play(player, after=after_playing)
                 ctx.bot.now_playing[guild_id] = player
-                logger.debug(f"Guild {guild_id}: 다음 곡 재생 시작 - {source_info['title']}")
             except discord.ClientException as e:
-                logger.error(f"Guild {guild_id}: 다음 곡 재생 실패 - {e}")
-                # 재생 실패 시 다음 곡 시도
+                logger.error(f"재생 실패: {e}")
                 await play_next(ctx)
                 return
             
@@ -454,32 +437,26 @@ async def play_next(ctx):
                 logger.error(f"상태 업데이트 실패: {e}")
         except Exception as e:
             import traceback
-            logger.error(f"다음 곡 재생 중 오류: {e}\n{traceback.format_exc()}")
-            # 오류 발생 시 대기열의 다음 곡 재생 시도
+            logger.error(f"다음 곡 재생 실패: {e}\n{traceback.format_exc()}")
             await play_next(ctx)
     else:
-        logger.info(f"Guild {guild_id}: 대기열 비어있음, 음성 채널에서 나가기")
         ctx.bot.now_playing.pop(guild_id, None)
-        # 가사 Task 정리
         if guild_id in ctx.bot.lyrics_tasks:
             task = ctx.bot.lyrics_tasks.pop(guild_id)
             if not task.done():
                 task.cancel()
         
-        # 음성 채널에서 나가기
         try:
             if voice_client.is_playing():
                 voice_client.stop()
             await voice_client.disconnect(force=False)
-            logger.info(f"Guild {guild_id}: 음성 채널에서 나감")
             
-            # 봇 상태 업데이트
             try:
                 await ctx.bot._update_status()
             except Exception as e:
                 logger.error(f"상태 업데이트 실패: {e}")
-        except Exception as e:
-            logger.error(f"음성 채널 나가기 실패: {e}")
+        except Exception:
+            pass
 
 
 def setup(bot):

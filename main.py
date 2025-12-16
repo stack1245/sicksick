@@ -1,4 +1,3 @@
-"""SickSick 음악 봇"""
 from __future__ import annotations
 import os
 import asyncio
@@ -19,8 +18,6 @@ logger = logging.getLogger("sicksick")
 
 
 class MusicBot(discord.Bot):
-    """음악 재생 및 대기열 관리 봇"""
-    
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
@@ -34,8 +31,8 @@ class MusicBot(discord.Bot):
         self.music_queues = {}
         self.now_playing = {}
         self.karaoke_sessions = {}
-        self.lyrics_tasks = {}  # 가사 표시 Task 추적
-        self.loop_mode = {}  # 반복 모드 (off, one, all)
+        self.lyrics_tasks = {}
+        self.loop_mode = {}
         self._commands_loaded = False
         self._auto_save_task: Optional[asyncio.Task] = None
         self._status_update_task: Optional[asyncio.Task] = None
@@ -56,7 +53,6 @@ class MusicBot(discord.Bot):
                 logger.error(f"초기화 실패: {e}")
                 return
         
-        # 초기 상태 설정
         await self._update_status()
         
         if not self._auto_save_task:
@@ -66,7 +62,6 @@ class MusicBot(discord.Bot):
             self._status_update_task = self.loop.create_task(self._status_update_loop())
     
     async def _auto_save_loop(self) -> None:
-        """주기적 데이터 저장"""
         await self.wait_until_ready()
         while not self.is_closed():
             await asyncio.sleep(AUTO_SAVE_INTERVAL)
@@ -76,25 +71,21 @@ class MusicBot(discord.Bot):
                 logger.error(f"자동 저장 실패: {e}")
     
     async def _status_update_loop(self) -> None:
-        """주기적 상태 업데이트"""
         await self.wait_until_ready()
         while not self.is_closed():
-            await asyncio.sleep(30)  # 30초마다 업데이트
+            await asyncio.sleep(30)
             try:
                 await self._update_status()
             except Exception as e:
                 logger.error(f"상태 업데이트 실패: {e}")
     
     async def _update_status(self) -> None:
-        """봇 상태 메시지 업데이트"""
         try:
-            # 현재 재생 중인 서버 수 계산
             playing_count = sum(
                 1 for vc in self.voice_clients
                 if isinstance(vc, discord.VoiceClient) and vc.is_playing()
             )
             
-            # 상태 메시지 구성
             if playing_count > 0:
                 status_text = f"{playing_count}개 서버에서 재생 중 🎵"
                 activity_type = discord.ActivityType.playing
@@ -118,13 +109,11 @@ class MusicBot(discord.Bot):
         before: discord.VoiceState,
         after: discord.VoiceState,
     ) -> None:
-        """음성 채널 상태 변경 처리"""
         if member.id != self.user.id:
             return
         
         if before.channel and not after.channel:
             guild_id = before.channel.guild.id
-            logger.info(f"Guild {guild_id}: 음성 채널에서 나감")
             
             # 실행 중인 가사 Task 취소
             if guild_id in self.lyrics_tasks:
@@ -141,7 +130,6 @@ class MusicBot(discord.Bot):
             self.karaoke_sessions.pop(guild_id, None)
             self.loop_mode.pop(guild_id, None)
             
-            # 상태 업데이트
             try:
                 await self._update_status()
             except Exception as e:
@@ -179,13 +167,11 @@ class MusicBot(discord.Bot):
             pass
     
     async def close(self) -> None:
-        """봇 종료 처리"""
         if self._closing:
             return
         self._closing = True
         
         try:
-            logger.info("봇 종료 시작...")
             
             # 자동 저장 Task 취소
             if self._auto_save_task and not self._auto_save_task.done():
@@ -216,16 +202,13 @@ class MusicBot(discord.Bot):
             # 데이터 저장
             self.data_manager.save_data()
             
-            # 모든 음성 연결 종료
             for vc in list(self.voice_clients):
                 try:
                     if vc.is_playing():
                         vc.stop()
                     await vc.disconnect(force=True)
-                except Exception as e:
-                    logger.warning(f"음성 연결 종료 실패: {e}")
-            
-            logger.info("봇 종료 완료")
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"종료 처리 실패: {e}")
         finally:
@@ -233,7 +216,6 @@ class MusicBot(discord.Bot):
 
 
 def main():
-    """봇 실행"""
     token = os.getenv("DISCORD_TOKEN")
     if not token:
         logger.error("DISCORD_TOKEN이 설정되지 않았습니다.")
@@ -251,8 +233,6 @@ def main():
         bot.run(token)
     except KeyboardInterrupt:
         pass
-    finally:
-        logger.info("봇 종료됨")
 
 
 if __name__ == "__main__":

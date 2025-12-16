@@ -1,4 +1,4 @@
-"""노래방 기능용 가사 동기화"""
+
 from __future__ import annotations
 import re
 import logging
@@ -36,30 +36,19 @@ def parse_lrc(lrc_text: str) -> List[Tuple[float, str]]:
 
 
 async def fetch_lrc(song_title: str, artist: Optional[str] = None) -> Optional[List[Tuple[float, str]]]:
-    """온라인 데이터베이스에서 동기화된 가사 가져오기"""
-    # LRCLIB API 사용 (무료, 안정적)
     try:
         async with aiohttp.ClientSession() as session:
-            # 검색 쿼리 생성
             params = {"track_name": song_title}
             if artist:
                 params["artist_name"] = artist
             
-            # LRCLIB API 호출
             async with session.get("https://lrclib.net/api/get", params=params) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    # syncedLyrics 필드에서 LRC 가져오기
                     synced_lyrics = data.get("syncedLyrics")
                     if synced_lyrics:
-                        logger.info(f"가사 찾음: {song_title}")
                         return parse_lrc(synced_lyrics)
-                    else:
-                        logger.warning(f"동기화된 가사 없음: {song_title}")
-                else:
-                    logger.warning(f"LRCLIB API 오류: {resp.status}")
             
-            # LRCLIB 검색 API 시도 (정확한 매칭 실패 시)
             async with session.get("https://lrclib.net/api/search", params=params) as resp:
                 if resp.status == 200:
                     results = await resp.json()
@@ -67,7 +56,6 @@ async def fetch_lrc(song_title: str, artist: Optional[str] = None) -> Optional[L
                         first_result = results[0]
                         synced_lyrics = first_result.get("syncedLyrics")
                         if synced_lyrics:
-                            logger.info(f"가사 찾음 (검색): {song_title}")
                             return parse_lrc(synced_lyrics)
     
     except Exception as e:

@@ -1,6 +1,4 @@
-"""서버 관리 명령어"""
 import discord
-from discord import Option
 from discord.ext import commands
 import logging
 
@@ -8,25 +6,21 @@ logger = logging.getLogger(__name__)
 
 
 async def create_temporary_invite(guild: discord.Guild) -> str:
-    """서버의 임시 초대 링크 생성 (1회용, 30초)"""
     try:
-        # 초대 링크를 생성할 채널 찾기
-        # 1. 시스템 채널 우선
         if guild.system_channel and guild.system_channel.permissions_for(guild.me).create_instant_invite:
             invite = await guild.system_channel.create_invite(
-                max_age=30,  # 30초 (최소값)
-                max_uses=1,  # 1회용
-                reason="봇 관리자 요청 (1회용)"
+                max_age=30,
+                max_uses=1,
+                reason="봇 관리자 요청"
             )
             return invite.url
         
-        # 2. 텍스트 채널 중 권한이 있는 첫 번째 채널
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).create_instant_invite:
                 invite = await channel.create_invite(
-                    max_age=30,  # 30초 (최소값)
-                    max_uses=1,  # 1회용
-                    reason="봇 관리자 요청 (1회용)"
+                    max_age=30,
+                    max_uses=1,
+                    reason="봇 관리자 요청"
                 )
                 return invite.url
         
@@ -39,13 +33,9 @@ async def create_temporary_invite(guild: discord.Guild) -> str:
         return "❌ 초대 링크 생성 실패"
 
 
-@discord.slash_command(
-    name="서버목록",
-    description="봇이 접속한 서버 목록과 초대 링크를 확인합니다 (관리자 전용)"
-)
+@discord.slash_command(name="서버목록", description="봇이 접속한 서버 목록과 초대 링크를 확인합니다 (관리자 전용)")
 @commands.has_permissions(administrator=True)
 async def servers(ctx: discord.ApplicationContext):
-    """봇이 접속한 모든 서버의 리스트와 초대 링크 표시"""
     
     await ctx.defer(ephemeral=True)
     
@@ -56,7 +46,6 @@ async def servers(ctx: discord.ApplicationContext):
         await ctx.followup.send("접속한 서버가 없습니다.", ephemeral=True)
         return
     
-    # 서버 정보 수집
     embeds = []
     current_embed = discord.Embed(
         title=f"🌐 서버 목록 ({total_servers}개)",
@@ -65,10 +54,9 @@ async def servers(ctx: discord.ApplicationContext):
     )
     
     field_count = 0
-    max_fields = 25  # Discord embed 필드 제한
+    max_fields = 25
     
     for idx, guild in enumerate(sorted(guilds, key=lambda g: g.member_count, reverse=True), 1):
-        # 새로운 embed가 필요한 경우
         if field_count >= max_fields:
             embeds.append(current_embed)
             current_embed = discord.Embed(
@@ -77,15 +65,11 @@ async def servers(ctx: discord.ApplicationContext):
             )
             field_count = 0
         
-        # 서버 정보
         owner = guild.owner
         owner_info = f"{owner.mention} ({owner})" if owner else "알 수 없음"
         member_count = guild.member_count
-        
-        # 초대 링크 생성 (1회용, 30초)
         invite_url = await create_temporary_invite(guild)
         
-        # 필드 추가
         server_info = (
             f"**ID:** `{guild.id}`\n"
             f"**소유자:** {owner_info}\n"

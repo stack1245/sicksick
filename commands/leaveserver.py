@@ -1,4 +1,3 @@
-"""서버 나가기 명령어"""
 import discord
 from discord import Option
 from discord.ext import commands
@@ -7,27 +6,21 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@discord.slash_command(
-    name="나가기",
-    description="봇이 지정한 서버에서 나갑니다 (관리자 전용)"
-)
+@discord.slash_command(name="나가기", description="봇이 지정한 서버에서 나갑니다 (관리자 전용)")
 @commands.has_permissions(administrator=True)
 async def leaveserver(
     ctx: discord.ApplicationContext,
     server_id: str = Option(description="나갈 서버의 ID")
 ):
-    """봇이 지정한 서버에서 나가기"""
     
     await ctx.defer(ephemeral=True)
     
     try:
-        # 서버 ID를 정수로 변환
         guild_id = int(server_id)
     except ValueError:
         await ctx.followup.send("❌ 잘못된 서버 ID입니다. 숫자로 입력해주세요.", ephemeral=True)
         return
     
-    # 서버 찾기
     guild = ctx.bot.get_guild(guild_id)
     
     if not guild:

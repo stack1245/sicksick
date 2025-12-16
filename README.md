@@ -1,17 +1,17 @@
 
 # SickSick Music Bot 🎵
 
-음성 채널에서 음악 재생, 대기열 관리, 노래방(MR/원곡 비교 채점), 싱크가사(LRC) 실시간 표시 기능을 제공하는 Discord 뮤직봇입니다.
+YouTube 음악 재생, 대기열 관리, 싱크가사(LRC) 실시간 표시 기능을 제공하는 Discord 음악 봇입니다.
 
 ## ✨ 주요 기능
 - 🎶 YouTube/URL 음악 재생 및 대기열 관리
 - 📝 싱크가사(LRC) 자동 검색 및 실시간 표시
 - 🔁 반복 재생 모드 (현재곡/대기열)
 - 🎚️ 볼륨 조절 및 설정 저장
-- 🎤 노래방 모드: MR(반주) 재생 + 원곡 비교 채점
+- 🎤 노래방 모드 (실험적 기능)
 - 🇰🇷 한글 명령어 지원
 - 🔄 자동 연결/재연결 및 안정적인 오류 처리
-- 📤 노래 끝나면 자동으로 음성 채널 나가기
+- 📤 자동 음성 채널 나가기
 
 ## 📋 명령어
 
@@ -54,68 +54,71 @@
 |--------|------|
 | `/도움말` | 봇 사용법 확인 |
 
-## 설치 및 실행
+## 🚀 설치 및 실행
+
+### 필수 프로그램
+- Python 3.8 이상
+- FFmpeg ([다운로드](https://www.ffmpeg.org/download.html) 후 PATH 추가)
+
+### 의존성 설치
 ```bash
 pip install -r requirements.txt
 ```
 
-FFmpeg 설치: https://www.ffmpeg.org/download.html (설치 후 PATH 추가)
-
+### 환경 변수 설정
 프로젝트 루트에 `.env` 파일 생성:
 ```env
 DISCORD_TOKEN=your_bot_token_here
 ```
 
-실행:
+### 실행
 ```bash
 python main.py
 ```
 
-## 필요 권한
+## 🔑 필요 권한
 - 음성 채널 연결/말하기
 - 메시지/임베드 전송
 - 애플리케이션 명령 사용
 
-## 디렉터리 구조
+## 📁 프로젝트 구조
 ```
 sicksick/
-    main.py
-    commands/
-        play.py
-        pause.py
-        stop.py
-        skip.py
-        queue.py
-        nowplaying.py
-        volume.py
-        karaoke.py
-    utils/
-        logging.py
-        constants.py
-        extension_loader.py
-        data_manager.py
-        data_health_checker.py
-        graceful_shutdown.py
-        lyrics_sync.py
-    data/
-    requirements.txt
-    README.md
-    .env
+├── main.py                 # 봇 메인 파일
+├── commands/               # 명령어 모듈
+│   ├── play.py
+│   ├── pause.py
+│   ├── stop.py
+│   ├── skip.py
+│   ├── queue.py
+│   └── ...
+├── utils/                  # 유틸리티 모듈
+│   ├── constants.py
+│   ├── embed_factory.py
+│   ├── data_manager.py
+│   ├── lyrics_sync.py
+│   └── ...
+├── data/                   # 데이터 저장소
+│   ├── playlists.json
+│   └── settings.json
+├── requirements.txt
+└── README.md
 ```
 
-## 싱크가사(LRC) 안내
-- 곡명/URL로 LRC 파일 자동 검색 및 실시간 표시
-- LRC가 없으면 일반 가사 안내 또는 미지원 메시지 출력
+## 📝 특별 기능
 
-## 노래방 채점 안내
-- MR(반주) 버전으로 재생, 원곡(보컬 포함)과 유저 음성 비교
-- 피치/에너지/발음/길이 등 종합 점수 제공
+### 싱크가사(LRC)
+- LRCLIB API를 통해 LRC 파일 자동 검색
+- 재생 중 실시간으로 가사 표시
+- 가사가 없는 경우 자동으로 건너뛰기
 
-## 종료 처리
-SIGINT/SIGTERM 발생 시 `utils.graceful_shutdown`에서 데이터 저장 콜백 실행
+### 노래방 모드
+- MR(반주) 버전으로 재생
+- 원곡과 유저 음성 비교하여 점수 제공
+- 피치/에너지/발음/길이 등 종합 채점
 
-## 라이선스
-개인/비상업적 용도 사용 가능. 문의: stack1245
+## 📜 라이선스
+개인/비상업적 용도 사용 가능
     data/
 ```
 

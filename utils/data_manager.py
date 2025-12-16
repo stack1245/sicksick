@@ -1,21 +1,4 @@
-"""씩씩이 음악 봇 데이터 관리자"""
-from __future__ import annotations
-import json
-from pathlib import Path
-from typing import TYPE_CHECKING
-
-from .data_health_checker import create_health_checker
-
-if TYPE_CHECKING:
-    import discord
-
-__all__ = ["DataManager"]
-
-
-class DataManager:
-    """재생목록 및 설정 영구 저장 관리"""
-    
-    def __init__(self, bot: discord.Bot):
+from __future__ import annotations\nimport json\nfrom pathlib import Path\nfrom typing import TYPE_CHECKING\n\nfrom .data_health_checker import create_health_checker\n\nif TYPE_CHECKING:\n    import discord\n\n__all__ = ["DataManager"]\n\n\nclass DataManager:\n    def __init__(self, bot: discord.Bot):
         self.bot = bot
         self.data_dir = Path(__file__).parent.parent / "data"
         self.playlists_file = self.data_dir / "playlists.json"
@@ -31,7 +14,6 @@ class DataManager:
         self.bot.load_data = self.load_data
     
     def _perform_health_check(self) -> None:
-        """데이터 파일 검사 및 복구"""
         files = [str(self.playlists_file), str(self.settings_file)]
         self.health_checker.health_check_and_repair(files)
     

@@ -1,4 +1,3 @@
-"""스타일이 적용된 Discord 임베드 생성"""
 from __future__ import annotations
 from typing import Optional
 import discord
@@ -16,7 +15,6 @@ __all__ = [
 
 
 def _resolve_color(color: str | int) -> int:
-    """색상 이름을 hex 값으로 변환"""
     if isinstance(color, int):
         return color
     return COLORS.get(str(color).upper(), COLORS["INFO"])
