@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 @discord.slash_command(
-    name="leaveserver",
+    name="나가기",
     description="봇이 지정한 서버에서 나갑니다 (관리자 전용)"
 )
 @commands.has_permissions(administrator=True)

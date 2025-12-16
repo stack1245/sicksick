@@ -40,7 +40,7 @@ async def create_temporary_invite(guild: discord.Guild) -> str:
 
 
 @discord.slash_command(
-    name="servers",
+    name="서버목록",
     description="봇이 접속한 서버 목록과 초대 링크를 확인합니다 (관리자 전용)"
 )
 @commands.has_permissions(administrator=True)
