@@ -7,22 +7,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-async def create_permanent_invite(guild: discord.Guild) -> str:
-    """서버의 영구 초대 링크 생성"""
+async def create_temporary_invite(guild: discord.Guild) -> str:
+    """서버의 임시 초대 링크 생성 (1회용, 30초)"""
     try:
-        # 기존 영구 초대 링크 확인
-        invites = await guild.invites()
-        for invite in invites:
-            if invite.max_age == 0 and invite.max_uses == 0:
-                return invite.url
-        
         # 초대 링크를 생성할 채널 찾기
         # 1. 시스템 채널 우선
         if guild.system_channel and guild.system_channel.permissions_for(guild.me).create_instant_invite:
             invite = await guild.system_channel.create_invite(
-                max_age=0,  # 영구
-                max_uses=0,  # 무제한
-                reason="봇 관리자 요청"
+                max_age=30,  # 30초 (최소값)
+                max_uses=1,  # 1회용
+                reason="봇 관리자 요청 (1회용)"
             )
             return invite.url
         
@@ -30,9 +24,9 @@ async def create_permanent_invite(guild: discord.Guild) -> str:
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).create_instant_invite:
                 invite = await channel.create_invite(
-                    max_age=0,
-                    max_uses=0,
-                    reason="봇 관리자 요청"
+                    max_age=30,  # 30초 (최소값)
+                    max_uses=1,  # 1회용
+                    reason="봇 관리자 요청 (1회용)"
                 )
                 return invite.url
         
@@ -88,15 +82,16 @@ async def servers(ctx: discord.ApplicationContext):
         owner_info = f"{owner.mention} ({owner})" if owner else "알 수 없음"
         member_count = guild.member_count
         
-        # 초대 링크 생성
-        invite_url = await create_permanent_invite(guild)
+        # 초대 링크 생성 (1회용, 30초)
+        invite_url = await create_temporary_invite(guild)
         
         # 필드 추가
         server_info = (
             f"**ID:** `{guild.id}`\n"
             f"**소유자:** {owner_info}\n"
             f"**멤버 수:** {member_count:,}명\n"
-            f"**초대 링크:** {invite_url}"
+            f"**초대 링크:** {invite_url}\n"
+            f"*⚠️ 1회용 30초 제한*"
         )
         
         current_embed.add_field(
