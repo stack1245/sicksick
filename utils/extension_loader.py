@@ -1,4 +1,13 @@
-from __future__ import annotations\nimport os\nfrom pathlib import Path\nfrom typing import Dict, List\n\nfrom discord.ext import commands\n\n\nclass ExtensionLoader:\n    def __init__(self, bot: commands.Bot, module_name: str = "Bot"):
+from __future__ import annotations
+import os
+from pathlib import Path
+from typing import Any, Dict, List
+
+from discord.ext import commands
+
+
+class ExtensionLoader:
+    def __init__(self, bot: commands.Bot, module_name: str = "Bot"):
         self.bot = bot
         self.module_name = module_name
         self.loaded_extensions: List[str] = []
