@@ -91,7 +91,7 @@ class MusicBot(discord.Bot):
                 activity_type = discord.ActivityType.playing
             else:
                 total_guilds = len(self.guilds)
-                status_text = f"{total_guilds}개 서버 | /play로 시작"
+                status_text = f"{total_guilds}개 서버 | /재생으로 시작"
                 activity_type = discord.ActivityType.listening
             
             await self.change_presence(
