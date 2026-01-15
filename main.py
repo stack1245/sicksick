@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from utils.extension_loader import ExtensionLoader
 from utils.data_manager import DataManager
-from utils.logging import configure_logging
+from utils.logging_config import configure_logging
 from utils.graceful_shutdown import setup_graceful_shutdown, register_shutdown_callback
 from utils.constants import DEFAULT_ACTIVITY_NAME, AUTO_SAVE_INTERVAL
 

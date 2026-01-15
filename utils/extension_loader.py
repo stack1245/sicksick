@@ -1,9 +1,11 @@
-from __future__ import annotations
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List
 
 from discord.ext import commands
+
+logger = logging.getLogger(__name__)
 
 
 class ExtensionLoader:
@@ -82,6 +84,7 @@ class ExtensionLoader:
             return True, len(files) if files else 1
         except Exception as e:
             self.failed_extensions[extension_name] = str(e)
+            logger.error(f"확장 로드 실패: {extension_name} - {e}")
             files = self._get_group_files(extension_name)
             return False, len(files) if files else 1
     
@@ -92,7 +95,8 @@ class ExtensionLoader:
         try:
             self.bot.reload_extension(extension_name)
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"확장 리로드 실패: {extension_name} - {e}")
             return False
 
     def unload_extension(self, extension_name: str) -> bool:
@@ -101,7 +105,8 @@ class ExtensionLoader:
             if extension_name in self.loaded_extensions:
                 self.loaded_extensions.remove(extension_name)
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"확장 언로드 실패: {extension_name} - {e}")
             return False
     
     def reload_all_extensions(self) -> None:
