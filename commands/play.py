@@ -1,12 +1,10 @@
-import discord
-import yt_dlp
 import asyncio
 import logging
+import yt_dlp
+import discord
 from utils import embed_error, embed_success, embed_info
 from utils.lyrics_sync import fetch_lrc
-
 logger = logging.getLogger(__name__)
-
 YTDL_OPTIONS = {
     "format": "bestaudio/best",
     "extractaudio": True,
@@ -30,15 +28,13 @@ YTDL_OPTIONS = {
     "file_access_retries": 3,
     "http_chunk_size": 10485760,  # 10MB
 }
-
 FFMPEG_OPTIONS = {
     "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -loglevel error",
     "options": "-vn -bufsize 2048k -sn"
 }
-
-
 class YTDLSource(discord.PCMVolumeTransformer):
-    def __init__(self, source, *, data, volume=0.05):
+    """클래스: YTDLSource"""
+    def __init__(self, source, *, data, volume=0.05) -> None:
         super().__init__(source, volume)
         self.data = data
         self.title = data.get("title")
@@ -48,36 +44,28 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.thumbnail = data.get("thumbnail")
         self.uploader = data.get("uploader")
         self.view_count = data.get("view_count")
-    
     @classmethod
-    async def from_url(cls, url, *, loop=None, stream=True):
+    async def from_url(cls, url, *, loop=None, stream=True) -> None:
         loop = loop or asyncio.get_event_loop()
-        
         with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
             data = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=False))
-            
             if "entries" in data:
                 if not data["entries"]:
                     raise ValueError("검색 결과가 없습니다")
                 data = data["entries"][0]
-            
             filename = data["url"]
             return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
-    
     @classmethod
-    async def create_source(cls, search, *, loop=None):
+    async def create_source(cls, search, *, loop=None) -> None:
         """검색어나 URL로부터 소스 정보만 추출 (스트림 URL은 나중에)"""
         loop = loop or asyncio.get_event_loop()
-        
         try:
             with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
                 data = await loop.run_in_executor(None, lambda: ydl.extract_info(search, download=False))
-                
                 if "entries" in data:
                     if not data["entries"]:
                         raise ValueError("검색 결과가 없습니다")
                     data = data["entries"][0]
-                
                 return {
                     "webpage_url": data.get("webpage_url"),
                     "title": data.get("title"),
@@ -100,27 +88,22 @@ class YTDLSource(discord.PCMVolumeTransformer):
                 raise ValueError("이 비디오는 차단되었거나 지역 제한이 있습니다.")
             else:
                 raise ValueError(f"비디오를 불러올 수 없습니다: {error_msg}")
-    
     @classmethod
-    async def prepare_player(cls, source_info, *, loop=None, volume=0.05):
+    async def prepare_player(cls, source_info, *, loop=None, volume=0.05) -> None:
         """재생 직전에 새로운 스트림 URL을 가져와서 플레이어 생성"""
         loop = loop or asyncio.get_event_loop()
-        
         try:
             with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
                 data = await loop.run_in_executor(
                     None, lambda: ydl.extract_info(source_info["webpage_url"], download=False)
                 )
-                
                 if "entries" in data:
                     if not data["entries"]:
                         raise ValueError("검색 결과가 없습니다")
                     data = data["entries"][0]
-                
                 # source_info의 정보를 유지하면서 새로운 스트림 URL 사용
                 data.update(source_info)
                 filename = data["url"]
-                
                 return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data, volume=volume)
         except yt_dlp.utils.DownloadError as e:
             error_msg = str(e)
@@ -136,8 +119,6 @@ class YTDLSource(discord.PCMVolumeTransformer):
                 raise ValueError("이 비디오는 차단되었거나 지역 제한이 있습니다.")
             else:
                 raise ValueError(f"비디오를 불러올 수 없습니다: {error_msg}")
-
-
 @discord.slash_command(name="재생", description="노래를 재생합니다")
 async def play(
     ctx: discord.ApplicationContext,
@@ -149,13 +130,10 @@ async def play(
             ephemeral=True
         )
         return
-    
     await ctx.defer()
-    
     try:
         channel = ctx.author.voice.channel
         voice_client = ctx.guild.voice_client
-        
         # 음성 클라이언트 연결 상태 확인 및 처리
         if not voice_client or not voice_client.is_connected():
             if voice_client:
@@ -168,7 +146,6 @@ async def play(
                 voice_client = None
                 # 연결 해제 후 대기
                 await asyncio.sleep(0.8)
-            
             max_retries = 3
             for attempt in range(max_retries):
                 try:
@@ -198,12 +175,10 @@ async def play(
                         await ctx.followup.send(embed=embed_error(f"음성 채널 연결 실패: {str(e)}"))
                         return
                     await asyncio.sleep(1)
-            
             # 최종 연결 확인
             if not voice_client or not voice_client.is_connected():
                 await ctx.followup.send(embed=embed_error("음성 채널에 연결할 수 없습니다"))
                 return
-                
         elif voice_client.channel != channel:
             try:
                 await voice_client.move_to(channel)
@@ -223,37 +198,30 @@ async def play(
                     logger.error(f"재연결 실패: {reconnect_error}")
                     await ctx.followup.send(embed=embed_error(f"재연결 실패: {str(reconnect_error)}"))
                     return
-        
         # 먼저 소스 정보만 추출
         source_info = await YTDLSource.create_source(제목_또는_url, loop=ctx.bot.loop)
         guild_id = ctx.guild.id
-        
         if guild_id not in ctx.bot.music_queues:
             ctx.bot.music_queues[guild_id] = []
-        
         # 재생 상태 재확인
         is_currently_playing = voice_client.is_connected() and voice_client.is_playing()
-        
         if is_currently_playing:
             # 대기열에는 소스 정보만 저장
             ctx.bot.music_queues[guild_id].append(source_info)
-            embed = embed_info("", title="🎵 재생목록에 추가")
+            embed = embed_info("", title=" 재생목록에 추가")
             embed.add_field(name="제목", value=f"[{source_info['title']}]({source_info['webpage_url']})", inline=False)
         else:
             # 연결 상태 최종 확인
             if not voice_client.is_connected():
                 await ctx.followup.send(embed=embed_error("음성 연결이 끊어졌습니다"))
                 return
-            
             # 이전에 재생 중이던 것이 있다면 정리
             if voice_client.is_playing():
                 voice_client.stop()
                 await asyncio.sleep(0.2)
-            
             # 재생 직전에 플레이어 생성
             initial_volume = ctx.bot.data_manager.get_guild_volume(guild_id) / 100 if hasattr(ctx.bot, 'data_manager') else 0.05
             player = await YTDLSource.prepare_player(source_info, loop=ctx.bot.loop, volume=initial_volume)
-            
             def after_playing(error):
                 if error:
                     logger.error(f"재생 중 오류 발생: {error}")
@@ -261,22 +229,20 @@ async def play(
                     asyncio.run_coroutine_threadsafe(play_next(ctx), ctx.bot.loop)
                 except Exception as e:
                     logger.error(f"다음 곡 예약 실패: {e}")
-            
             try:
                 voice_client.play(player, after=after_playing)
                 ctx.bot.now_playing[guild_id] = player
-                embed = embed_success("", title="🎶 재생 중")
+                embed = embed_success("", title=" 재생 중")
                 embed.add_field(name="제목", value=f"[{source_info['title']}]({source_info['webpage_url']})", inline=False)
             except discord.ClientException as e:
                 logger.error(f"재생 시작 실패: {e}")
                 await ctx.followup.send(embed=embed_error(f"재생 시작 실패: {str(e)}"))
                 return
-
             # 싱크 가사 표시 (LRC)
             lyrics = await fetch_lrc(source_info['title'])
             if lyrics:
                 lyrics_msg = await ctx.followup.send(embed=embed_info("싱크 가사 준비 중..."))
-                async def send_lyrics():
+                async def send_lyrics() -> None:
                     try:
                         start_time = asyncio.get_event_loop().time()
                         for t, line in lyrics:
@@ -296,26 +262,21 @@ async def play(
                         logger.debug("가사 Task 취소됨")
                     except Exception as e:
                         logger.error(f"가사 표시 오류: {e}")
-                
                 # Task 추적 - 이전 Task가 있으면 취소
                 if guild_id in ctx.bot.lyrics_tasks:
                     old_task = ctx.bot.lyrics_tasks[guild_id]
                     if not old_task.done():
                         old_task.cancel()
-                
                 ctx.bot.lyrics_tasks[guild_id] = asyncio.create_task(send_lyrics())
             else:
                 await ctx.followup.send(embed=embed_info("싱크 가사를 찾을 수 없습니다."))
-        
         # 재생시간 정보
         if source_info.get('duration'):
             minutes, seconds = divmod(source_info['duration'], 60)
-            embed.add_field(name="⏱️ 재생시간", value=f"{int(minutes)}:{int(seconds):02d}", inline=True)
-        
+            embed.add_field(name=" 재생시간", value=f"{int(minutes)}:{int(seconds):02d}", inline=True)
         # 업로더 정보
         if source_info.get('uploader'):
-            embed.add_field(name="👤 업로더", value=source_info['uploader'], inline=True)
-        
+            embed.add_field(name=" 업로더", value=source_info['uploader'], inline=True)
         # 조회수 정보
         if source_info.get('view_count'):
             views = source_info['view_count']
@@ -325,15 +286,12 @@ async def play(
                 view_str = f"{views/1000:.1f}K"
             else:
                 view_str = str(views)
-            embed.add_field(name="👁️ 조회수", value=view_str, inline=True)
-        
+            embed.add_field(name=" 조회수", value=view_str, inline=True)
         # 요청자 정보
         embed.set_footer(text=f"요청자: {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
-        
         if source_info.get('thumbnail'):
             embed.set_thumbnail(url=source_info['thumbnail'])
         await ctx.followup.send(embed=embed)
-    
     except ValueError as e:
         await ctx.followup.send(embed=embed_error(str(e)))
     except Exception as e:
@@ -341,12 +299,9 @@ async def play(
         error_msg = f"오류 발생: {str(e)}"
         logger.error(f"Play command error: {traceback.format_exc()}")
         await ctx.followup.send(embed=embed_error(error_msg))
-
-
-async def play_next(ctx):
+async def play_next(ctx) -> None:
     guild_id = ctx.guild.id
     voice_client = ctx.guild.voice_client
-    
     if not voice_client:
         ctx.bot.now_playing.pop(guild_id, None)
         ctx.bot.music_queues.pop(guild_id, None)
@@ -355,7 +310,6 @@ async def play_next(ctx):
             if not task.done():
                 task.cancel()
         return
-    
     if not voice_client.is_connected():
         ctx.bot.music_queues.pop(guild_id, None)
         ctx.bot.now_playing.pop(guild_id, None)
@@ -369,7 +323,6 @@ async def play_next(ctx):
             pass
         return
     loop_mode = ctx.bot.loop_mode.get(guild_id, "off") if hasattr(ctx.bot, 'loop_mode') else "off"
-    
     # 현재 곡 반복 모드
     if loop_mode == "one" and guild_id in ctx.bot.now_playing:
         current_song_data = {
@@ -383,13 +336,11 @@ async def play_next(ctx):
         source_info = current_song_data
     elif guild_id in ctx.bot.music_queues and ctx.bot.music_queues[guild_id]:
         source_info = ctx.bot.music_queues[guild_id].pop(0)
-        
         # 대기열 반복 모드 - 재생한 곡을 대기열 끝에 추가
         if loop_mode == "all":
             ctx.bot.music_queues[guild_id].append(source_info.copy())
     else:
         source_info = None
-    
     if source_info:
         try:
             # 이전 가사 Task 취소
@@ -397,23 +348,19 @@ async def play_next(ctx):
                 old_task = ctx.bot.lyrics_tasks.pop(guild_id)
                 if not old_task.done():
                     old_task.cancel()
-            
             if not voice_client.is_connected():
                 ctx.bot.music_queues.pop(guild_id, None)
                 ctx.bot.now_playing.pop(guild_id, None)
                 return
-            
             if voice_client.is_playing():
                 voice_client.stop()
                 await asyncio.sleep(0.2)
             if voice_client.is_playing():
                 voice_client.stop()
                 await asyncio.sleep(0.2)
-            
             # 재생 직전에 새로운 스트림 URL로 플레이어 생성
             initial_volume = ctx.bot.data_manager.get_guild_volume(guild_id) / 100 if hasattr(ctx.bot, 'data_manager') else 0.05
             player = await YTDLSource.prepare_player(source_info, loop=ctx.bot.loop, volume=initial_volume)
-            
             def after_playing(error):
                 if error:
                     logger.error(f"재생 중 오류 발생: {error}")
@@ -421,7 +368,6 @@ async def play_next(ctx):
                     asyncio.run_coroutine_threadsafe(play_next(ctx), ctx.bot.loop)
                 except Exception as e:
                     logger.error(f"다음 곡 예약 실패: {e}")
-            
             try:
                 voice_client.play(player, after=after_playing)
                 ctx.bot.now_playing[guild_id] = player
@@ -429,7 +375,6 @@ async def play_next(ctx):
                 logger.error(f"재생 실패: {e}")
                 await play_next(ctx)
                 return
-            
             # 봇 상태 업데이트
             try:
                 asyncio.create_task(ctx.bot._update_status())
@@ -445,19 +390,16 @@ async def play_next(ctx):
             task = ctx.bot.lyrics_tasks.pop(guild_id)
             if not task.done():
                 task.cancel()
-        
         try:
             if voice_client.is_playing():
                 voice_client.stop()
             await voice_client.disconnect(force=False)
-            
             try:
                 await ctx.bot._update_status()
             except Exception as e:
                 logger.error(f"상태 업데이트 실패: {e}")
         except Exception:
             pass
-
-
-def setup(bot):
+def setup(bot: discord.Bot) -> None:
+    """명령어 로드"""
     bot.add_application_command(play)

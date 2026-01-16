@@ -1,3 +1,6 @@
+"""확장(명령어) 로더"""
+from __future__ import annotations
+
 import logging
 import os
 from pathlib import Path
@@ -9,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class ExtensionLoader:
-    def __init__(self, bot: commands.Bot, module_name: str = "Bot"):
+    """Discord Bot 확장 동적 로드"""
+    
+    def __init__(self, bot: commands.Bot, module_name: str = "Bot") -> None:
         self.bot = bot
         self.module_name = module_name
         self.loaded_extensions: List[str] = []

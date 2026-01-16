@@ -1,31 +1,34 @@
 from __future__ import annotations
-import os
 import asyncio
 import logging
+import os
 from typing import Optional
+
 import discord
 from dotenv import load_dotenv
 
-from utils.extension_loader import ExtensionLoader
+from utils.constants import AUTO_SAVE_INTERVAL, DEFAULT_ACTIVITY_NAME
 from utils.data_manager import DataManager
+from utils.extension_loader import ExtensionLoader
+from utils.graceful_shutdown import register_shutdown_callback, setup_graceful_shutdown
 from utils.logging_config import configure_logging
-from utils.graceful_shutdown import setup_graceful_shutdown, register_shutdown_callback
-from utils.constants import DEFAULT_ACTIVITY_NAME, AUTO_SAVE_INTERVAL
 
 load_dotenv()
 configure_logging()
-logger = logging.getLogger("sicksick")
+logger = logging.getLogger(__name__)
 
 
 class MusicBot(discord.Bot):
-    def __init__(self):
+    """음악 봇 - 재생 및 가라오케"""
+
+    def __init__(self) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
         intents.voice_states = True
-        
+
         super().__init__(intents=intents)
-        
+
         self.data_manager = DataManager(self)
         self.extension_loader = ExtensionLoader(self)
         self.music_queues = {}
@@ -36,7 +39,6 @@ class MusicBot(discord.Bot):
         self._commands_loaded = False
         self._auto_save_task: Optional[asyncio.Task] = None
         self._status_update_task: Optional[asyncio.Task] = None
-        self._closing = False
     
     async def on_ready(self) -> None:
         if not self.user:
@@ -215,20 +217,21 @@ class MusicBot(discord.Bot):
             await super().close()
 
 
-def main():
+def main() -> None:
+    """봇 실행"""
     token = os.getenv("DISCORD_TOKEN")
     if not token:
         logger.error("DISCORD_TOKEN이 설정되지 않았습니다.")
         return
-    
+
     bot = MusicBot()
-    
-    def shutdown_handler():
+
+    def shutdown_handler() -> None:
         asyncio.create_task(bot.close())
-    
+
     register_shutdown_callback(shutdown_handler)
     setup_graceful_shutdown()
-    
+
     try:
         bot.run(token)
     except KeyboardInterrupt:
