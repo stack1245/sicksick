@@ -232,6 +232,10 @@ async def play(
             try:
                 voice_client.play(player, after=after_playing)
                 ctx.bot.now_playing[guild_id] = player
+                now = asyncio.get_event_loop().time()
+                ctx.bot.play_started_at[guild_id] = now
+                ctx.bot.play_offset[guild_id] = 0.0
+                ctx.bot.play_paused_at.pop(guild_id, None)
                 embed = embed_success("", title=" 재생 중")
                 embed.add_field(name="제목", value=f"[{source_info['title']}]({source_info['webpage_url']})", inline=False)
             except discord.ClientException as e:
@@ -371,6 +375,10 @@ async def play_next(ctx) -> None:
             try:
                 voice_client.play(player, after=after_playing)
                 ctx.bot.now_playing[guild_id] = player
+                now = asyncio.get_event_loop().time()
+                ctx.bot.play_started_at[guild_id] = now
+                ctx.bot.play_offset[guild_id] = 0.0
+                ctx.bot.play_paused_at.pop(guild_id, None)
             except discord.ClientException as e:
                 logger.error(f"재생 실패: {e}")
                 await play_next(ctx)

@@ -22,6 +22,9 @@ async def stop(ctx: discord.ApplicationContext) -> None:
     # 재생 중지
     if voice_client.is_playing():
         voice_client.stop()
+    ctx.bot.play_started_at.pop(guild_id, None)
+    ctx.bot.play_offset.pop(guild_id, None)
+    ctx.bot.play_paused_at.pop(guild_id, None)
     # 가사 Task 정리
     if guild_id in ctx.bot.lyrics_tasks:
         task = ctx.bot.lyrics_tasks.pop(guild_id)

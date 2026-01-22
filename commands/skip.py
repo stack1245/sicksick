@@ -19,6 +19,10 @@ async def skip(ctx: discord.ApplicationContext) -> None:
     if guild_id in ctx.bot.now_playing:
         current_song = ctx.bot.now_playing[guild_id]
     voice_client.stop()
+    # 타이밍 메타데이터 정리
+    ctx.bot.play_started_at.pop(guild_id, None)
+    ctx.bot.play_offset.pop(guild_id, None)
+    ctx.bot.play_paused_at.pop(guild_id, None)
     msg = "⏩ 노래를 건너뛰었습니다"
     if current_song:
         msg = f"⏩ **{current_song.title}**을(를) 건너뛰었습니다"

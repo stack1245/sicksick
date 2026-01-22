@@ -26,6 +26,9 @@ class DataManager:
         self.bot.guild_settings = {}
         self.bot.save_data = self.save_data
         self.bot.load_data = self.load_data
+        self.bot.save_playlist_named = self.save_playlist_named
+        self.bot.load_playlist_named = self.load_playlist_named
+        self.bot.list_playlists = self.list_playlists
     
     def _perform_health_check(self) -> None:
         files = [str(self.playlists_file), str(self.settings_file)]
@@ -51,6 +54,10 @@ class DataManager:
         
         with open(self.playlists_file, "r", encoding="utf-8") as f:
             self.bot.playlists = json.load(f)
+
+        if not isinstance(self.bot.playlists, dict):
+            self.bot.playlists = {}
+            self.save_playlists()
     
     def save_settings(self) -> None:
         with open(self.settings_file, "w", encoding="utf-8") as f:
@@ -76,3 +83,21 @@ class DataManager:
             self.bot.guild_settings[str(guild_id)] = {}
         self.bot.guild_settings[str(guild_id)]["volume"] = volume
         self.save_settings()
+
+    # 플레이리스트 유틸
+    def save_playlist_named(self, guild_id: int, name: str, queue: list[dict]) -> None:
+        gid = str(guild_id)
+        if gid not in self.bot.playlists:
+            self.bot.playlists[gid] = {}
+        self.bot.playlists[gid][name] = queue
+        self.save_playlists()
+
+    def load_playlist_named(self, guild_id: int, name: str) -> list[dict] | None:
+        gid = str(guild_id)
+        playlists = self.bot.playlists.get(gid, {})
+        return playlists.get(name)
+
+    def list_playlists(self, guild_id: int) -> list[str]:
+        gid = str(guild_id)
+        playlists = self.bot.playlists.get(gid, {})
+        return sorted(playlists.keys())

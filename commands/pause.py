@@ -14,8 +14,16 @@ async def pause(ctx: discord.ApplicationContext) -> None:
         return
     if voice_client.is_playing():
         voice_client.pause()
+        # 타이밍 메타데이터 업데이트
+        now = asyncio.get_event_loop().time()
+        ctx.bot.play_paused_at[ctx.guild.id] = now
         await ctx.respond(embed=embed_info(" 일시정지되었습니다"))
     elif voice_client.is_paused():
+        now = asyncio.get_event_loop().time()
+        paused_at = ctx.bot.play_paused_at.get(ctx.guild.id, now)
+        offset = ctx.bot.play_offset.get(ctx.guild.id, 0.0)
+        ctx.bot.play_offset[ctx.guild.id] = offset + (now - paused_at)
+        ctx.bot.play_paused_at.pop(ctx.guild.id, None)
         voice_client.resume()
         await ctx.respond(embed=embed_success(" 재생이 재개되었습니다"))
 def setup(bot: discord.Bot) -> None:

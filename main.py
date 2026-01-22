@@ -35,6 +35,9 @@ class MusicBot(discord.Bot):
         self.extension_loader = ExtensionLoader(self)
         self.music_queues = {}
         self.now_playing = {}
+        self.play_started_at = {}
+        self.play_offset = {}
+        self.play_paused_at = {}
         self.karaoke_sessions = {}
         self.lyrics_tasks = {}
         self.loop_mode = {}
